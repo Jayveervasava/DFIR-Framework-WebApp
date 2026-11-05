@@ -39,7 +39,13 @@ const LOGO = `<svg width="34" height="34" viewBox="0 0 48 48"><defs><linearGradi
 <path d="M24 3 42 10v13c0 11-7.6 19.6-18 22C13.6 42.6 6 34 6 23V10z" fill="none" stroke="url(#lg)" stroke-width="3"/>
 <circle cx="22" cy="22" r="7" fill="none" stroke="url(#lg)" stroke-width="2.6"/><path d="m27 27 6 6" stroke="url(#lg)" stroke-width="3" stroke-linecap="round"/></svg>`;
 const awsOn = () => !S.sess || S.sess.aws_collect_enabled !== false;      /* flag missing (undefined) = old behaviour: show */
-const reanOn = () => !S.sess || S.sess.can_reanalyse !== false;
+// Re-analyse button: the case's own flag wins (a guest may re-analyse an own case, not the shared demo);
+// without it, fall back to the session flag; without both, keep the old behaviour (shown).
+const reanOn = () => {
+  const c = S.case;
+  if (c && typeof c.can_reanalyse === "boolean") return c.can_reanalyse;
+  return !S.sess || S.sess.can_reanalyse !== false;
+};
 const REPO = "https://github.com/jayveerv/DFIR-Framework-WebApp";
 const TITLE = "A Scalable Cross-Platform DFIR Framework for Automated Evidence Collection, Correlation, and Cloud Forensic Investigation";
 
