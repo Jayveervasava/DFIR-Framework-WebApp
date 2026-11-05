@@ -286,7 +286,9 @@ class MerkleRoutes(BackendBase):
             return c.post("/api/verify-proof", json=dict({"proof": p}, **kw), headers=H).get_json()
         p = json.loads(json.dumps(proof))
         p["finding"]["detail"] = "something else"
-        self.assertFalse(check(p, case_id=cid)["valid"])
+        v = check(p, case_id=cid)
+        self.assertFalse(v["valid"])
+        self.assertFalse(v["leaf_matches_finding"], v)          # the changed finding no longer hashes to the case's leaf
         p = json.loads(json.dumps(proof))
         p["root"] = "0" * 64
         v = check(p, case_id=cid)

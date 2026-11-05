@@ -1357,8 +1357,13 @@ def api_verify_proof():
     if st:
         out["root_matches_ledger"] = bool(st["ledger_root"]) and proof.get("root") == st["ledger_root"]
         eid = proof.get("event_id")
+        # the finding carried in the proof must hash to the leaf of that event in the case (not just the proof's own leaf_hash)
+        try:
+            carried = mk.leaf_hash(proof["finding"]) if isinstance(proof.get("finding"), dict) else None
+        except Exception:
+            carried = None
         out["leaf_matches_finding"] = isinstance(eid, str) and st["fresh_leaf"].get(eid) is not None \
-            and st["fresh_leaf"][eid] == proof.get("leaf_hash")
+            and st["fresh_leaf"][eid] == proof.get("leaf_hash") == carried
         if ok and proof.get("case_id") not in (None, cid):
             out["valid"], out["reason"] = False, f"this proof was issued for case {proof.get('case_id')}, not {cid}"
         # leaf_count is not hashed into the root, so a changed count can still walk the same path: bind it to the ledger

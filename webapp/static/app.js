@@ -747,16 +747,19 @@ function viewVerifyProof(v) {
   `<div class="g g32"><div class="card"><h3><i>${ic("lock", 15)}</i>Proof JSON</h3>
   <div class="fr"><textarea class="in" id="pj" spellcheck="false" style="min-height:280px" placeholder='{"version":1,"case_id":"CASE-...","event_id":"...","leaf_hash":"...","path":[...],"root":"...","ledger_seq":...}'></textarea></div>
   <div class="row" style="align-items:flex-end"><div><label class="f">or upload a proof file (.json)</label><input class="in" type="file" id="pf" accept=".json,application/json"></div>
-  <div><label class="f">Case ID (optional)</label><input class="in" id="pc" placeholder="taken from the proof if empty" autocomplete="off"></div></div>
+  <div><label class="f">Case ID (optional)</label><input class="in" id="pc" placeholder="empty = check the proof on its own" autocomplete="off"></div></div>
   <div class="err" id="perr" style="margin-top:10px"></div><div class="acts"><button class="btn pri" id="pgo">${ic("chk", 15)} Verify proof</button><button class="btn" id="pclr">Clear</button></div></div>
   <div><div id="pres"><div class="card empty">${ic("cus", 40)}<div class="big">Result appears here</div><div class="note">VALID or INVALID, with the reason.</div></div></div>
   <div class="card" style="margin-top:16px"><h3><i>${ic("exp", 15)}</i>What is checked</h3><div class="note">1. The leaf hash is re-computed from the finding in the proof.<br>2. The path of sibling hashes is folded up to a root.<br>3. That root must equal the Merkle root stored in the custody ledger entry named in the proof.</div></div></div></div>`;
   const pj = $("#pj");
   $("#pf").onchange = async e => { const f = e.target.files[0]; if (!f) return; if (f.size > 2e6) { $("#perr").textContent = "file too large for a proof (max 2 MB)"; return; }
     try { pj.value = await f.text(); $("#perr").textContent = ""; } catch (er) { $("#perr").textContent = "could not read the file"; } };
-  $("#pclr").onclick = () => { pj.value = ""; $("#pf").value = ""; $("#pc").value = ""; $("#perr").textContent = ""; };
+  $("#pclr").onclick = () => { pj.value = ""; $("#pf").value = ""; $("#pc").value = ""; $("#perr").textContent = "";
+    $("#pres").innerHTML = `<div class="card empty">${ic("cus", 40)}<div class="big">Result appears here</div><div class="note">VALID or INVALID, with the reason.</div></div>`; };
   $("#pgo").onclick = async () => {
     const er = $("#perr"); er.textContent = ""; let proof;
+    const empty = () => { $("#pres").innerHTML = `<div class="card empty">${ic("cus", 40)}<div class="big">Result appears here</div><div class="note">VALID or INVALID, with the reason.</div></div>`; };
+    empty();                                               // never leave an older result next to a new input
     if (!pj.value.trim()) { er.textContent = "paste the proof JSON or choose a file first"; return; }
     try { proof = JSON.parse(pj.value); } catch (x) { er.textContent = "this is not valid JSON: " + x.message; return; }
     if (!proof || typeof proof !== "object" || Array.isArray(proof)) { er.textContent = "a proof must be a JSON object"; return; }
