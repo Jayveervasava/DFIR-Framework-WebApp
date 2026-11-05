@@ -54,7 +54,16 @@ class RealProcesses(unittest.TestCase):
         p = subprocess.Popen([exe, "120"])
         self.procs.append(p)
         time.sleep(0.4)
+        self._need_exe_link(p.pid)
         return exe, p
+
+    def _need_exe_link(self, pid):
+        """These tests check what the collector reads from /proc/<pid>/exe. Some hardened machines (e.g. GitHub-hosted
+        CI runners) do not let a process read that link even for its own child: skip there instead of failing."""
+        try:
+            os.readlink(f"/proc/{pid}/exe")
+        except OSError as e:
+            self.skipTest(f"this machine does not allow reading /proc/<pid>/exe of a child process ({e.strerror})")
 
     def test_process_running_from_tmp_is_collected_hashed_and_flagged(self):
         exe, p = self._spawn_from_tmp()
@@ -135,6 +144,7 @@ class RealProcesses(unittest.TestCase):
             self.skipTest(f"cannot execute from memfd here: {e}")
         self.procs.append(p)
         time.sleep(0.4)
+        self._need_exe_link(p.pid)
         out = tempfile.mkdtemp()
         collect_to(out)
         mine = [e for e in analyze(out)["events"] if e["event_type"] == "process_snapshot" and (e["extra"] or {}).get("pid") == p.pid]
