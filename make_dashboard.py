@@ -236,7 +236,7 @@ def collect_data(root=ROOT):
                            "agree": r["bf_ips_agree"], "fail": r["framework_auth_failure"], "top": r["top_attackers"][:5]} for f, r in rd["linux"].items()],
                 "aws": [{"file": a["file"], "why": a["why"], "hit": a["hit"]} for a in rd["aws"]]}
 
-    # held-out result of the frozen rule set (Figure 6)
+    # held-out result of the frozen rule set (development vs held-out bar chart)
     hp = os.path.join(res, "heldout_frozen_v1.1.json")
     ho = _load(hp) if os.path.exists(hp) else None
     heldout = None
@@ -755,7 +755,7 @@ function sReal(){
  <div class="card"><h3><i>${ic("tgt",15)}</i>Labelled Windows samples</h3><div class="scroll" style="max-height:330px;border:0">${w.labelled.map(x=>`<div style="display:flex;gap:10px;padding:8px 2px;border-bottom:1px solid var(--line)"><span class="${x.hit?'ok':x.hard?'warn':'bad'}">${ic(x.hit?'chk':x.hard?'alert':'x',16)}</span><div style="min-width:0"><div class="mono" style="font-size:11.5px;word-break:break-all">${esc(x.file.split("/").pop())}${x.hard?' <span class="tag sev-medium">HARD</span>':''}</div><div class="note">${esc(x.why)}</div></div></div>`).join("")}</div></div></div>`;
  h+=`<div class="card" style="margin-top:16px"><h3><i>${ic("col",15)}</i>Linux brute-force (LogHub)</h3><table><tr><th>Log</th><th>Lines</th><th>Normalized</th><th>Failed logins</th><th>Brute-force IPs (framework / independent)</th><th>Top attacking sources</th></tr>
  ${R.linux.map(l=>`<tr><td class="mono">${esc(l.file)}</td><td class="mono">${fmt(l.lines)}</td><td class="mono">${l.norm}</td><td class="mono">${l.fail}</td><td class="mono ${l.agree?'ok':'bad'}">${l.fw} / ${l.ind} ${l.agree?'✓':''}</td><td class="mono" style="font-size:11px">${l.top.map(t=>esc(t[0])+' ('+t[1]+')').join(", ")}</td></tr>`).join("")}</table></div>`;
- if(D.heldout)h+=`<div class="card" style="margin-top:16px"><h3><i>${ic("tgt",15)}</i>Figure 6 · Detection on development samples vs held-out samples</h3>${heldChart(D.heldout,w)}</div>`;
+ if(D.heldout)h+=`<div class="card" style="margin-top:16px"><h3><i>${ic("tgt",15)}</i>Detection on development samples vs held-out samples</h3>${heldChart(D.heldout,w)}</div>`;
  return h;
 }
 function heldChart(H,w){

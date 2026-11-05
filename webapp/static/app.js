@@ -660,7 +660,7 @@ function tCustody(v) {
     ready() ? `<button class="btn pri" id="vb">${ic("cus", 15)} Verify now</button>` : "");
   if (!ready()) { needRun(v, "the custody ledger"); return; }
   const R = S.res, V = S.verify, bad = new Set((V && !V.ok ? V.failed : []).map(c => (c.item.match(/^entry (\d+)/) || [])[1]).filter(Boolean).map(Number));
-  v.innerHTML += `<div class="info" style="margin-bottom:16px"><b>Anchor location.</b> On the hosted demo the anchor is stored on the same server. For real evidence, run CP-DFIR locally.</div>
+  v.innerHTML += `${S.sess && S.sess.public_mode ? `<div class="info" style="margin-bottom:16px"><b>Anchor location.</b> On the hosted demo the anchor is stored on the same server. For real evidence, run CP-DFIR locally.</div>` : ""}
   <div class="card" id="mk" style="margin-bottom:16px"><h3><i>${ic("tgt", 15)}</i>Merkle root of findings<span class="r"><a class="btn sm" href="#/verify-proof">${ic("chk", 13)} Verify a proof</a></span></h3><div class="note"><span class="spin"></span> loading ...</div></div>
   <div id="vres">${V ? verifyBox(V) : `<div class="info cy" style="margin-bottom:16px"><b>Not verified in this session.</b> Press <b>Verify now</b>: every ledger entry, every HMAC, the anchor hash and the current SHA-256 of every recorded file are checked again.</div>`}</div>
   <div class="g g2" style="margin-bottom:16px"><div class="card"><h3><i>${ic("key", 15)}</i>Anchor hash (kept outside the case folder)</h3><div class="mono" style="word-break:break-all;font-size:12.5px;color:var(--gr)">${esc(R.anchor || "–")}</div>

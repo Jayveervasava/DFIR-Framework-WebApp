@@ -135,7 +135,7 @@ All numbers and figures come from the real outputs in `results/` and `cases/`; n
 | Same, but scalability only up to 10,000 records | `python main.py evaluate --quick` | same files |
 | Real public data: EVTX-ATTACK-SAMPLES, LogHub, Stratus Red Team, plus the held-out set (downloads about 44 MB on the first run, needs internet) | `python main.py real-eval` | `results/real_data_results.json`, `results/real_data_report.html`, `results/heldout_results.json` |
 | Tamper-detection demo | `python main.py tamper-demo` | console output |
-| Dashboard with all figures (Figure 6 = development vs held-out detection bars, section Real-World Validation) | `python make_dashboard.py` | `results/dashboard.html` |
+| Dashboard with all figures (the development vs held-out detection bars are in the Real-World Validation section) | `python make_dashboard.py` | `results/dashboard.html` |
 | Table 8, step 1: download the held-out samples (needs internet) | `python -c "import heldout; heldout.fetch('.')"` | `real_data/heldout/` |
 | Table 8, step 2: Chainsaw on the 117 in-scope held-out samples (**UNTESTED, run on laptop**; needs the Chainsaw binary and a Sigma clone, see `scripts/README.md`) | `python scripts/run_chainsaw.py --chainsaw PATH --sigma DIR --mapping FILE` | `results/table8/chainsaw_per_sample.csv`, `chainsaw_meta.json` |
 | Table 8, step 3: Hayabusa on the same 117 samples (**UNTESTED, run on laptop**) | `python scripts/run_hayabusa.py --hayabusa PATH` | `results/table8/hayabusa_per_sample.csv`, `hayabusa_meta.json` |
@@ -343,7 +343,7 @@ Full detail is in `results/real_data_report.html`. The data is downloaded from G
 
 | Data | What | Result |
 |---|---|---|
-| **Windows** EVTX-ATTACK-SAMPLES | 278 real attack captures, 37,364 records | **0 parse errors.** 228 samples (82.0%) contain supported events (12.2% before the parser work). Of 26 labelled samples, **25 detected**; on 5 deliberately hard or unsupported cases, **1 of 5** (Kerberos password spray 4771, caught by the brute-force rule since v1.3 counts 4768/4771 failures) |
+| **Windows** EVTX-ATTACK-SAMPLES | 278 real attack captures, 37,364 records | **0 parse errors.** 232 samples (83.5%) contain supported events (12.2% before the parser work). Of 26 labelled samples, **25 detected**; on 5 deliberately hard or unsupported cases, **1 of 5** (Kerberos password spray 4771, caught by the brute-force rule since v1.3 counts 4768/4771 failures) |
 | **Linux** LogHub OpenSSH_2k | A real Internet-facing SSH server, 2,000 lines | 520 events (26%); failures **527 = 527** against an independent regex count; brute-force IPs **11 = 11** against an independent naive detector (same set) |
 | Linux LogHub Linux_2k | Older RedHat format | 489 events (24.4%); brute-force IPs 39 = 39 |
 | **AWS** Stratus Red Team CloudTrail | 4 real attack samples (15 events) | **4 of 4 detected** (earlier version: 1 of 4 and a crash on one file) |
