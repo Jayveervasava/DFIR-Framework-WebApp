@@ -16,7 +16,9 @@ Run:   python webapp/app.py            (opens http://127.0.0.1:5000)
 Environment: DFIR_PUBLIC_MODE=1 disables collectors that read the server itself (for an online demo).
 """
 import argparse
+import contextlib
 import hashlib
+import hmac
 import io
 import json
 import os
@@ -124,6 +126,46 @@ app.config.update(SECRET_KEY=os.environ.get("DFIR_SESSION_KEY") or _secret_file(
 
 LOCK = threading.RLock()
 
+
+def rules_fingerprint():
+    """SHA-256 of the detection and parsing code (correlate.py, normalize.py, config.py) - the same recipe as heldout.py.
+    Stored with every analysed case, so a case analysed with an older rule set can be recognised."""
+    import heldout
+    return heldout.rules_fingerprint()
+
+
+def _merkle_module():
+    """The Merkle layer (merkle.py) or None when this build does not have it."""
+    try:
+        import merkle
+    except ImportError:
+        return None
+    return merkle
+
+
+def _analysis_stamp():
+    """What a fresh analysis would be made with right now: rule-set fingerprint and whether Merkle trees are built."""
+    return {"rules_fingerprint": rules_fingerprint(), "rules": len(FLAGS), "merkle": _merkle_module() is not None}
+
+
+class _ApiError(Exception):
+    """Clean JSON error for the API (no stack trace to the visitor)."""
+    def __init__(self, status, message):
+        super().__init__(message)
+        self.status, self.message = status, message
+
+
+@app.errorhandler(_ApiError)
+def _api_error(e):
+    return jsonify(error=e.message), e.status
+
+
+@app.errorhandler(404)
+def _not_found(e):
+    if request.path.startswith("/api/"):
+        return jsonify(error="not found"), 404
+    return e
+
 # ============================================================== users / auth
 USERS = os.path.join(DATA, "users.json")
 AUDIT = os.path.join(DATA, "audit.jsonl")
@@ -223,7 +265,9 @@ def api_session():
     u = current_user()
     return jsonify(setup_needed=not users(), user=({"username": session["user"], "name": u["name"], "role": u["role"]} if u else None),
                    app=APP_NAME, version=VERSION, public_mode=PUBLIC_MODE, platform=sys.platform, guest=GUEST,
-                   retention_hours=RETENTION_H)
+                   retention_hours=RETENTION_H,
+                   aws_collect_enabled=not PUBLIC_MODE,                       # AWS access-key collection is closed on the hosted console
+                   can_reanalyse=bool(u) and u.get("role") != "guest")        # guests cannot re-analyse (per-case: see "can_reanalyse" on a case)
 
 
 @app.post("/api/guest")
@@ -417,6 +461,7 @@ def _public_case(m):
             "analyzed": lr.get("time"), "incidents": lr.get("incidents"), "alerts": lr.get("alerts"), "events": lr.get("events"),
             "high": lr.get("high"), "custody_ok": (m.get("last_verify") or {}).get("ok", lr.get("custody_ok")),
             "job": _job_for(m["id"]), "shared": bool(m.get("shared")), "writable": can_write(m) if _in_request() else True,
+            "can_reanalyse": bool(m.get("evidence")) and (can_write(m) if _in_request() else True),
             "expires": _expires(m)}
 
 
@@ -893,6 +938,7 @@ def api_job(jid):
 
 
 def _job_analyze(j, cid, user, **_):
+    stamp = _analysis_stamp()                  # rule-set fingerprint at the moment this analysis starts
     with LOCK:
         m = load_meta(cid)
     if not m["evidence"]:
@@ -950,6 +996,7 @@ def _job_analyze(j, cid, user, **_):
     with LOCK:
         m = load_meta(cid)
         m["last_run"], m["status"] = run, "analyzed"
+        m["analysis_stamp"] = stamp
         m.pop("last_verify", None)
         save_meta(m)
     _EV_CACHE.pop(cid, None)
@@ -1017,8 +1064,15 @@ def _job_triage(j, cid, user, days=7, logs=True, analyze=True, **_):
     return _then_analyze(j, cid, user, analyze, n)
 
 
+AWS_PUBLIC_MSG = ("Collecting from AWS with access keys is switched off on the hosted console, so nobody has to paste cloud "
+                  "credentials into a public website. Run CP-DFIR locally (python webapp/app.py) to collect from AWS, or upload a "
+                  "CloudTrail JSON export here.")
+
+
 def _job_aws(j, cid, user, access_key=None, secret_key=None, session_token=None, profile=None, region=None, days=7,
              state=True, all_regions=False, analyze=True, **_):
+    if PUBLIC_MODE:
+        raise RuntimeError(AWS_PUBLIC_MSG)                       # defence in depth: the route already refuses this
     try:
         import boto3
     except ImportError:
@@ -1125,6 +1179,8 @@ def api_job_start(cid, kind):
     fns = {"analyze": _job_analyze, "sample": _job_sample, "triage": _job_triage, "aws": _job_aws, "ssh": _job_ssh, "winlog": _job_winlog}
     if kind not in fns:
         abort(404)
+    if PUBLIC_MODE and kind == "aws":
+        return jsonify(error=AWS_PUBLIC_MSG, run_locally=True), 403
     if PUBLIC_MODE and kind in ("triage", "winlog"):
         return jsonify(error="not available on the hosted console: it would collect the server, not your computer - "
                              "use the downloadable collector (Evidence page) and upload its zip"), 403
@@ -1146,6 +1202,168 @@ def api_job_start(cid, kind):
         safe["access_key"] = safe["access_key"][:4] + "..." + safe["access_key"][-4:]
     audit(f"job_{kind}_started", cid, job=j.id, options=safe)
     return jsonify(job=j.id)
+
+
+# ============================================================== Merkle proofs (finding -> ledger root)
+# A finding is a normalized event with non-empty flags. merkle.py (not part of this file) builds the tree during analysis,
+# writes case/merkle_tree.json and records its root in the custody ledger (action "merkle"). These routes only read that
+# data, cross-check it against the case and the ledger, and hand out / check proofs.
+_SAFE_NAME = re.compile(r"[^A-Za-z0-9_.-]")
+
+
+def _read_ledger(cid):
+    lp = os.path.join(CASES, cid, "case", "custody_ledger.jsonl")
+    out = []
+    if os.path.exists(lp):
+        with open(lp, encoding="utf-8") as f:
+            for line in f:
+                if line.strip():
+                    try:
+                        out.append(json.loads(line))
+                    except ValueError:
+                        pass
+    return out
+
+
+def _ledger_entry_ok(cid, entry):
+    """The 'merkle' ledger entry is intact: its hash matches its content and its HMAC was made with the custody key."""
+    try:
+        import custody
+        if custody._entry_hash(entry) != entry.get("entry_hash"):
+            return False
+        if not CUSTODY_KEY:
+            return True
+        return hmac.compare_digest(str(entry.get("hmac") or ""), custody._mac(CUSTODY_KEY, entry["entry_hash"]))
+    except (AttributeError, KeyError, TypeError):
+        # custody.py without those helpers: fall back to its public full verification of the whole case
+        ok, _ = CustodyLedger(os.path.join(CASES, cid, "case", "custody_ledger.jsonl")).verify(_anchor(cid), CUSTODY_KEY)
+        return ok
+
+
+def _merkle_state(cid):
+    """Load the case's Merkle tree and cross-check it. Raises _ApiError (404 no tree yet, 501 no Merkle layer in this build).
+    Returns dict with the tree, the ledger entry, the findings in tree order, freshly recomputed leaf hashes and `problems`
+    (empty list = the tree, the case's findings and the ledger all agree)."""
+    mk = _merkle_module()
+    if mk is None:
+        raise _ApiError(501, "Merkle proofs are not available in this build of the console")
+    tp = os.path.join(CASES, cid, "case", "merkle_tree.json")
+    tree = _read_json(tp)
+    if not isinstance(tree, dict) or "root" not in tree:
+        raise _ApiError(404, "this case has no Merkle tree yet: analyse (or re-analyse) the case first")
+    entries = [e for e in _read_ledger(cid) if e.get("action") == "merkle"]
+    entry = entries[-1] if entries else None
+    c = _events(cid)
+    evs, by = (c[1], c[2]) if c else ([], {})
+    problems = []
+    ledger_root = None
+    if entry is None:
+        problems.append("the custody ledger has no 'merkle' entry")
+    else:
+        det = entry.get("details") or {}
+        ledger_root = det.get("root")
+        if ledger_root != tree.get("root") or det.get("leaf_count") != tree.get("leaf_count"):
+            problems.append("the tree file differs from the root recorded in the custody ledger")
+        if entry.get("sha256") != sha256_file(tp):
+            problems.append("merkle_tree.json changed after it was recorded in the custody ledger")
+        if not _ledger_entry_ok(cid, entry):
+            problems.append("the ledger entry fails its hash / HMAC check")
+    leaves = [l for l in (tree.get("leaves") or []) if isinstance(l, dict)]
+    ids = [l.get("event_id") for l in leaves]
+    findings = [by[i] for i in ids if i in by]
+    if len(findings) != len(ids):
+        problems.append(f"{len(ids) - len(findings)} finding(s) of the tree are missing from the case")
+    if {e["event_id"] for e in evs if e.get("flags")} != set(ids):
+        problems.append("the flagged events of the case are not the findings of the tree")
+    fresh = {}
+    if len(findings) == len(ids):
+        try:
+            rebuilt = mk.build_tree(findings)
+            fresh = {l["event_id"]: l["leaf_hash"] for l in rebuilt.get("leaves", [])}
+            if rebuilt.get("root") != tree.get("root"):
+                problems.append("the root recomputed from the case's findings differs from the stored root")
+        except Exception as e:                       # a broken tree must not become a stack trace for the visitor
+            problems.append(f"the tree could not be rebuilt ({type(e).__name__})")
+    return {"mk": mk, "tree": tree, "entry": entry, "ledger_root": ledger_root, "ids": set(ids), "findings": findings,
+            "fresh_leaf": fresh, "problems": problems}
+
+
+@app.get("/api/cases/<cid>/merkle")
+@login_required
+def api_merkle(cid):
+    case_dir(cid)
+    st = _merkle_state(cid)
+    t, e = st["tree"], st["entry"]
+    return jsonify(root=t.get("root"), leaf_count=t.get("leaf_count"), ledger_seq=e.get("seq") if e else None,
+                   verified=not st["problems"], algorithm=t.get("algorithm"), problems=st["problems"])
+
+
+@app.get("/api/cases/<cid>/findings/<eid>/proof")
+@login_required
+def api_finding_proof(cid, eid):
+    case_dir(cid)
+    st = _merkle_state(cid)
+    if eid not in st["ids"]:
+        raise _ApiError(404, "no such finding in this case (only flagged events have a Merkle proof)")
+    if st["problems"]:
+        raise _ApiError(409, "this case fails its Merkle integrity check, so no proof is issued: " + "; ".join(st["problems"]))
+    t, e, mk = st["tree"], st["entry"], st["mk"]
+    info = {"case_id": cid, "seq": e.get("seq"), "entry_hash": e.get("entry_hash"), "ledger_seq": e.get("seq"),
+            "ledger_entry_hash": e.get("entry_hash"), "root": t.get("root"), "leaf_count": t.get("leaf_count"),
+            "algorithm": t.get("algorithm")}
+    try:
+        proof = mk.make_proof(t, st["findings"], eid, info)
+        proof["case_id"] = cid
+        ok, why = mk.verify_proof(proof, trusted_root=st["ledger_root"])
+    except Exception:
+        raise _ApiError(500, "the proof could not be built for this finding")
+    if not ok:
+        raise _ApiError(500, "the proof built for this finding does not verify: " + str(why))
+    audit("proof_exported", None if _shared(cid) else cid, case_id=cid, event_id=eid)
+    name = f"proof_{_SAFE_NAME.sub('_', cid)}_{_SAFE_NAME.sub('_', eid)}.json"
+    return send_file(io.BytesIO(json.dumps(proof, indent=1).encode("utf-8")), mimetype="application/json", as_attachment=True,
+                     download_name=name)
+
+
+def _shared(cid):
+    return bool((_read_json(os.path.join(CASES, cid, "case.json")) or {}).get("shared"))
+
+
+@app.post("/api/verify-proof")
+@login_required
+def api_verify_proof():
+    """Check a proof file. Without case_id only the proof itself is checked (path, root). With case_id it is also
+    compared with that case: the root must be the one in the custody ledger and the finding must be unchanged."""
+    if (request.content_length or 0) > 2 * 1024 * 1024:
+        raise _ApiError(413, "proof file too large")
+    d = request.get_json(silent=True)
+    if not isinstance(d, dict) or not isinstance(d.get("proof"), dict):
+        raise _ApiError(400, 'send JSON like {"proof": {...}, "case_id": "..."}')
+    proof, cid = d["proof"], d.get("case_id")
+    if cid is not None and not isinstance(cid, str):
+        raise _ApiError(400, "case_id must be a string")
+    if cid:
+        case_dir(cid)                                  # same privacy rule as every case route: 404 if it is not yours
+    mk = _merkle_module()
+    if mk is None:
+        raise _ApiError(501, "Merkle proofs are not available in this build of the console")
+    st = _merkle_state(cid) if cid else None
+    try:
+        ok, reason = mk.verify_proof(proof, trusted_root=st["ledger_root"] if st else None)
+        ok = bool(ok)
+    except Exception:
+        ok, reason = False, "the proof is malformed and could not be checked"
+    out = {"valid": ok, "reason": reason, "leaf_matches_finding": None, "root_matches_ledger": None}
+    if st:
+        out["root_matches_ledger"] = bool(st["ledger_root"]) and proof.get("root") == st["ledger_root"]
+        eid = proof.get("event_id")
+        out["leaf_matches_finding"] = isinstance(eid, str) and st["fresh_leaf"].get(eid) is not None \
+            and st["fresh_leaf"][eid] == proof.get("leaf_hash")
+        if ok and proof.get("case_id") not in (None, cid):
+            out["valid"], out["reason"] = False, f"this proof was issued for case {proof.get('case_id')}, not {cid}"
+        if st["problems"]:
+            out["case_problems"] = st["problems"]
+    return jsonify(out)
 
 
 # ============================================================== results
@@ -1658,35 +1876,130 @@ def _bootstrap_admin():
 _bootstrap_admin()
 
 
-def _seed_demo():
-    """Public deploy: start with one analysed demo case so the console is never empty (the free host wipes data on restart)."""
-    if os.environ.get("DFIR_SEED_DEMO", "1" if PUBLIC_MODE else "0") in ("", "0", "false", "no"):
-        return
-    with LOCK:
-        if [x for x in os.listdir(CASES) if os.path.isdir(os.path.join(CASES, x))]:
-            return
-        cid = _new_case_id()
-        os.makedirs(os.path.join(CASES, cid, "uploads"))
-        save_meta({"id": cid, "title": "Demo — cross-platform attack (Windows + Linux + AWS)", "created": _now(), "created_by": "system",
-                   "owner": "system", "shared": True,
-                   "description": "Simulated attack: RDP brute force on Windows, SSH compromise on Linux, stolen AWS key abused in the cloud, "
-                                  "plus an exposed AWS account state.", "status": "new",
-                   "config": {k: fw_config.DEFAULT_CASE[k] for k in CFG_KEYS}, "evidence": []})
-    audit("case_created", cid, title="Demo — cross-platform attack (Windows + Linux + AWS)", by="system")
-    j = Job(cid, "sample", "system")
-    JOBS[j.id] = j
+# The shared, read-only demo cases of a public deployment (owner "system", visible to every visitor).
+DEMOS = {
+    "s1_aws": {"scenario": "S1_cloud", "cid": None,           # case id from the normal counter (kept as it always was)
+               "title": "Demo — cross-platform attack (Windows + Linux + AWS)",
+               "description": "Simulated attack: RDP brute force on Windows, SSH compromise on Linux, stolen AWS key abused in the cloud, "
+                              "plus an exposed AWS account state."},
+    "s1_pure": {"scenario": "S1", "cid": "S1_pure",
+                "title": "Demo — scenario S1 only (Windows + Linux + AWS CloudTrail)",
+                "description": "Simulated attack: RDP brute force on Windows, SSH compromise on Linux, stolen AWS key abused in the cloud. "
+                               "Event logs only: no AWS account state, so there are no posture findings."},
+}
 
-    def run():
+
+def _demo_index():
+    """key -> case id of the demo cases already on disk. The demo of earlier versions has no key: it is recognised and adopted."""
+    found = {}
+    for cid in sorted(os.listdir(CASES)):
+        m = _read_json(os.path.join(CASES, cid, "case.json"))
+        if not m or not m.get("shared") or m.get("owner") != "system":
+            continue
+        key = m.get("demo")
+        if not key and str(m.get("title", "")).startswith("Demo") and (
+                not m.get("evidence") or any(e.get("origin") == "simulated:S1_cloud" for e in m["evidence"])):
+            key = m["demo"] = "s1_aws"
+            save_meta(m)
+        if key in DEMOS:
+            found.setdefault(key, cid)
+    return found
+
+
+def _ensure_demo(key, found):
+    cid = found.get(key)
+    if cid:
+        return cid
+    spec = DEMOS[key]
+    with LOCK:
+        cid = spec["cid"] or _new_case_id()
+        os.makedirs(os.path.join(CASES, cid, "uploads"), exist_ok=True)
+        save_meta({"id": cid, "title": spec["title"], "created": _now(), "created_by": "system", "owner": "system", "shared": True,
+                   "demo": key, "description": spec["description"], "status": "new",
+                   "config": {k: fw_config.DEFAULT_CASE[k] for k in CFG_KEYS}, "evidence": []})
+    audit("case_created", cid, title=spec["title"], by="system")
+    return cid
+
+
+def _demo_task(cid):
+    """What a demo case needs at start: ("seed" | "analyse" | "reanalyse", why) or None when it is up to date.
+    The stamp stored with the analysis (rule-set fingerprint, whether Merkle trees are built) must equal today's."""
+    m = _read_json(os.path.join(CASES, cid, "case.json")) or {}
+    if not m.get("evidence"):
+        return "seed", "no evidence yet"
+    if not m.get("last_run") or not os.path.exists(os.path.join(CASES, cid, "case", "incidents.json")):
+        return "analyse", "not analysed yet"
+    old, now = m.get("analysis_stamp") or {}, _analysis_stamp()
+    if old.get("rules_fingerprint") != now["rules_fingerprint"]:
+        return "reanalyse", f"rule set changed ({old.get('rules', '?')} -> {now['rules']} rules)" if old else "analysed before rule-set fingerprints existed"
+    if old.get("merkle") != now["merkle"]:
+        return "reanalyse", "Merkle trees are now built during analysis"
+    return None
+
+
+def _reanalyse_keeping_old(j, cid, user):
+    """Analyse again from the stored originals. The previous results are copied aside first and put back if the run fails,
+    so a failed re-analysis never leaves the demo case empty."""
+    d = os.path.join(CASES, cid, "case")
+    bak = os.path.join(TMP, f"{cid}.previous-analysis")
+    if os.path.isdir(bak):
+        _rmtree(bak)
+    had = os.path.isdir(d)
+    if had:
+        shutil.copytree(d, bak)
+    try:
+        return _job_analyze(j, cid, user)
+    except BaseException:
+        if had:
+            if os.path.isdir(d):
+                _rmtree(d)
+            shutil.copytree(bak, d)
+            j.log("Re-analysis failed: the previous results were restored")
+        raise
+    finally:
+        if os.path.isdir(bak):
+            _rmtree(bak)
+
+
+def _demo_worker(tasks):
+    user = {"name": "Demo Analyst"}
+    for key, cid, task, why in tasks:                         # one after the other: the free host has little processor time
+        j = Job(cid, "sample" if task == "seed" else "analyze", "system")
+        JOBS[j.id] = j
+        j.log(f"Demo case {cid}: {why}")
         try:
-            j.result = _job_sample(j, cid, {"name": "Demo Analyst"}, scenario="S1_cloud", analyze=True)
+            # while a demo is re-analysed the database mirror keeps the complete previous copy (see persist.Mirror.hold)
+            with (MIRROR.hold() if MIRROR else contextlib.nullcontext()):
+                if task == "seed":
+                    j.result = _job_sample(j, cid, user, scenario=DEMOS[key]["scenario"], analyze=True)
+                elif task == "analyse":
+                    j.result = _job_analyze(j, cid, user)
+                else:
+                    j.result = _reanalyse_keeping_old(j, cid, user)
             j.status = "done"
         except Exception as e:
-            j.status, j.error = "failed", str(e)
+            j.status, j.error = "failed", str(e) or type(e).__name__
+            j.log("ERROR: " + j.error)
         j.ended = _now()
-        _audit_job(j, {"name": "Demo Analyst"})
+        _audit_job(j, user)
         if MIRROR:
             MIRROR.request_sync()
-    threading.Thread(target=run, daemon=True).start()
+
+
+def _seed_demo():
+    """Public deploy: keep the shared demo cases present and analysed with the CURRENT rule set. A demo case analysed with another
+    rule set (the database keeps the old one across restarts) is analysed again from its stored evidence; nothing is deleted."""
+    if os.environ.get("DFIR_SEED_DEMO", "1" if PUBLIC_MODE else "0") in ("", "0", "false", "no"):
+        return
+    found = _demo_index()
+    tasks = []
+    for key in DEMOS:
+        cid = _ensure_demo(key, found)
+        t = _demo_task(cid)
+        if t:
+            tasks.append((key, cid, t[0], t[1]))
+    if tasks:
+        threading.Thread(target=_demo_worker, args=(tasks,), daemon=True).start()
 
 
 _seed_demo()
