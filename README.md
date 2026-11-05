@@ -57,6 +57,8 @@ evidence, run CP-DFIR on your own computer so the data never leaves it.
 | Kerberos brute force | Events 4768/4771 failures now count as authentication failures, and the brute-force rule counts them | `normalize.py` |
 | Service baseline | Drivers and services under System32 or Program Files no longer alert; services launched through cmd, PowerShell, `%COMSPEC%` or from outside those folders still do | `correlate.py` |
 | Live progress | The analysis job shows stage, progress bar and elapsed time; a warning appears for cases larger than 20 MB | `pipeline.py`, `webapp/` |
+| Merkle per-finding proofs | Every analysis builds a SHA-256 Merkle tree of the findings (`merkle_tree.json`) and records its root in the HMAC-signed custody ledger. Each alert has **Download proof**; the **Verify proof** page (`#/verify-proof`) checks a proof offline or against a case's ledger. Tamper-evident, not tamper-proof (see Limitations) | `merkle.py`, `pipeline.py`, `custody.py`, `webapp/` |
+| Sixth tampering test | Reordered ledger entries are now part of the tampering evaluation (30 attempts: 6 attack types x 5 scenarios) | `evaluate.py` |
 
 **Held-out note.** The frozen v1.1 result (30.8% of in-scope samples alerted) is the real held-out number. The v1.3 rules were
 written after looking at the gaps in that collection, so their re-run is shown only as post-hoc
@@ -165,7 +167,8 @@ The framework also runs as a working web application: upload or collect evidence
 | **MITRE ATT&CK** | Matrix of the techniques seen in this case |
 | **Cloud posture** | AWS account mistakes (MFA off, public bucket, open ports, and more) |
 | **Evidence explorer** | All normalised events with search, filter and paging; a row click shows the full record, the **original log line** and provenance |
-| **Chain of custody** | **Verify now**, HMAC-signed ledger blocks, anchor hash (kept outside the case folder), and a **tampering demo** (change a file, see TAMPERING DETECTED, restore) |
+| **Chain of custody** | **Verify now**, HMAC-signed ledger blocks, anchor hash (kept outside the case folder), the **Merkle root of the findings** (verified against the ledger), and a **tampering demo** (change a file, see TAMPERING DETECTED, restore) |
+| **Download / Verify proof** | Every alert has a **Download proof** button (a small JSON file: the finding, its Merkle path and the root). The **Verify proof** page (`#/verify-proof`) checks a pasted or uploaded proof and says VALID or INVALID; with a case ID the root is also checked against that case's custody ledger |
 | **Report and export** | HTML report, `timeline.csv`, events and incidents JSON, ledger, full case bundle (`.zip`) |
 | **Activity log** | Who did what: uploads (with hash), collectors, analysis, verification, exports |
 | Framework evaluation | 7 native pages: overview, accuracy, integrity, cloud, scalability, real-world validation, ATT&CK coverage (from `results/*.json`) |
@@ -181,7 +184,9 @@ The framework also runs as a working web application: upload or collect evidence
 - **Backup:** keep the `webapp_data/` folder (cases, `custody.key`, `anchors.json`) together.
 
 **Public mode.** To host it online: `python webapp/app.py --host 0.0.0.0 --port 8080 --no-browser` with `DFIR_PUBLIC_MODE=1`. In public mode live
-triage, SSH and Windows export are disabled, because they would collect the server's data rather than yours.
+triage, SSH and Windows export are disabled, because they would collect the server's data rather than yours, and the AWS
+collector does not accept access keys (run CP-DFIR locally for that). Two read-only demo cases are kept analysed with the current
+rule set: the S1 scenario alone (`S1_pure`: 244 events, 38 flagged) and S1 plus an AWS account state (268 events, 51 flagged).
 
 Files: `webapp/app.py` (Flask backend, uses the framework unchanged), `webapp/static/` (UI), `run_webapp.bat`, `run_webapp.sh`.
 
@@ -221,11 +226,11 @@ Command line: `python main.py triage | collect-host | demo | evaluate | real-eva
 | Acquisition | `collect.py`, `hostcollect.py`, `cloudstate.py` | Copies logs into `evidence/` (hash before and after). Live host collector (section 3b), Windows `wevtutil` (XML / .evtx), AWS boto3 `LookupEvents`, Linux local or SSH |
 | Normalisation | `normalize.py` | All formats into one schema; all times in UTC |
 | Correlation | `correlate.py` | 62 rule types, all mapped to MITRE ATT&CK (Windows 21, Linux 2, login / brute force 2, AWS CloudTrail 11, live host 15, AWS account posture 11) plus a NetworkX entity graph. Every connected component that contains an activity alert becomes an incident (posture findings alone do not create incidents) |
-| Chain of custody | `custody.py` | SHA-256 of every action in a hash-chained ledger with **optional HMAC** (signed with a secret key). Detects a changed file, a changed entry, a deleted entry, a removed last entry, and a fully rewritten chain (with HMAC) |
+| Chain of custody | `custody.py`, `merkle.py` | SHA-256 of every action in a hash-chained ledger with **optional HMAC** (signed with a secret key). Detects a changed file, a changed entry, a deleted entry, reordered entries, a removed last entry, and a fully rewritten chain (with HMAC). **Merkle per-finding proofs:** every finding (flagged event) is a leaf of a SHA-256 Merkle tree; the tree is written to `merkle_tree.json` and its root is recorded in the ledger, so one finding can be handed over and checked on its own |
 | Reporting | `report.py` | Self-contained HTML report (no internet or JavaScript needed) |
 | Evaluation | `evaluate.py`, `generate_data.py` | Simulated scenarios with ground truth, tampering tests, scalability |
 | Real-data validation | `realdata.py` | Tests on **real** public logs (section 4) |
-| Tests | `tests/` | 62 tests: real processes and sockets (Linux), AWS collectors (botocore Stubber validated against the AWS service model), SSH collector (fake runner), parsers, rules, custody, hosted-console privacy, collector package integrity, pseudonymisation, held-out labels |
+| Tests | `tests/` | 104 tests: real processes and sockets (Linux), AWS collectors (botocore Stubber validated against the AWS service model), SSH collector (fake runner), parsers, rules, custody, hosted-console privacy, collector package integrity, pseudonymisation, held-out labels, Merkle trees and proofs (including tampered and malformed proofs) |
 
 **Supported inputs**
 
@@ -251,7 +256,7 @@ Full detail is in `results/evaluation_report.html`.
 | Correlation, hard case S5 | Precision 90.0%, Recall 69.2%, **F1 = 0.783** |
 | S5 with admin-source policy | Precision 92.9%, Recall 100%, **F1 = 0.963**; benign S4 with policy: 0 false alerts |
 | Unified versus siloed | S1: best silo finds 42.1% of the attack chain, unified 100%. S2: 64.0% versus 100% |
-| Integrity | 25 of 25 tampering attacks detected (5 attack types x 5 scenarios, including a forged chain caught by HMAC); 5 of 5 untouched cases verified. A forged chain is **not** caught without HMAC or an anchor (listed as a known limitation) |
+| Integrity | 30 of 30 tampering attacks detected (6 attack types x 5 scenarios, including reordered entries and a forged chain caught by HMAC); 5 of 5 untouched cases verified. A forged chain is **not** caught without HMAC or an anchor (listed as a known limitation) |
 | Scalability | 1,067 records in 0.06 s, up to 104,634 records in 7.7 s. Throughput falls from about 16,800 to about 13,600 records/s, so scaling is near-linear. The attack is still found (F1 1.000) |
 
 **These numbers are weak evidence**: both the data and the rules were created in this project. That is why section 4 matters.
@@ -338,7 +343,7 @@ Full detail is in `results/real_data_report.html`. The data is downloaded from G
 
 | Data | What | Result |
 |---|---|---|
-| **Windows** EVTX-ATTACK-SAMPLES | 278 real attack captures, 37,364 records | **0 parse errors.** 228 samples (82.0%) contain supported events (12.2% before the parser work). Of 26 labelled samples, **25 detected**; on 5 deliberately hard or unsupported cases, **0 of 5** |
+| **Windows** EVTX-ATTACK-SAMPLES | 278 real attack captures, 37,364 records | **0 parse errors.** 228 samples (82.0%) contain supported events (12.2% before the parser work). Of 26 labelled samples, **25 detected**; on 5 deliberately hard or unsupported cases, **1 of 5** (Kerberos password spray 4771, caught by the brute-force rule since v1.3 counts 4768/4771 failures) |
 | **Linux** LogHub OpenSSH_2k | A real Internet-facing SSH server, 2,000 lines | 520 events (26%); failures **527 = 527** against an independent regex count; brute-force IPs **11 = 11** against an independent naive detector (same set) |
 | Linux LogHub Linux_2k | Older RedHat format | 489 events (24.4%); brute-force IPs 39 = 39 |
 | **AWS** Stratus Red Team CloudTrail | 4 real attack samples (15 events) | **4 of 4 detected** (earlier version: 1 of 4 and a crash on one file) |
@@ -369,7 +374,7 @@ decoded because of a `python-evtx` 0.8 NullTypeNode bug; they are counted, not h
 
 **Still missed (marked MISS in the report):** rdrleakdiag LSASS dump (the sample has no LSASS-access event; the command line triggers
 *credential_dump_tool* but the label asks for *lsass_access*, so it counts as a MISS), renamed regsvr32, msxsl, Security 4656/4663
-object-access LSASS, TeamViewer memory dump, and Kerberos password spray (4771).
+object-access LSASS, and TeamViewer memory dump.
 
 ---
 
@@ -386,6 +391,15 @@ object-access LSASS, TeamViewer memory dump, and Kerberos password spray (4771).
 9. The custody ledger **detects tampering; it does not prevent it.** Removing the last entries is caught only if the anchor hash is noted separately, and a full rewrite of the chain only if the ledger is HMAC-signed (`--custody-key-file` or `DFIR_CUSTODY_KEY`) and the key is not in the attacker's hands. If the attacker has the key or full write access to the ledger, there is no guarantee. On the public demo the anchor is stored on the same server.
 10. The host collector takes no memory dump or disk image, only artifacts. The timestomp check uses ctime on Linux and is absent on Windows. Live collection itself changes the system slightly (a new process, files read).
 11. Speed was measured in a single process up to 100,000 records.
+12. **Merkle per-finding proofs are tamper-evident, not tamper-proof.** (a) `leaf_count` is not hashed into the root: the offline
+    check alone (`verify_proof` without a case) still passes when the count is changed to another value with the same path shape
+    (for example 7 to 8); the check against the custody ledger (`verify_proof_against_ledger`, or the Verify proof page with a case
+    ID) catches it. (b) A leaf covers only 15 fields (`event_id, time_utc, source, host, event_type, user, src_ip, target, outcome,
+    detail, source_file, line_ref, flags, techniques, incident`); a change to `severity`, `raw` or other fields is not caught by a
+    proof (the file hash of `normalized_events.json` in the ledger still covers them). (c) A proof shows that a finding is in the
+    tree; it does not show that the findings are complete (a finding dropped before the tree was built is not detected). (d) The root
+    is trusted only through the HMAC-signed ledger: an attacker who has the key, or write access to the whole ledger, tree file and
+    anchor, defeats it. Without a trusted root a proof is only self-consistent.
 
 ---
 
