@@ -2,7 +2,7 @@
 
 [![tests](https://github.com/jayveerv/DFIR-Framework-WebApp/actions/workflows/tests.yml/badge.svg)](https://github.com/jayveerv/DFIR-Framework-WebApp/actions/workflows/tests.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![DOI](https://img.shields.io/badge/DOI-pending%20Zenodo%20release-lightgrey.svg)](#how-to-cite)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23973650.svg)](https://doi.org/10.5281/zenodo.23973650)
 ![version](https://img.shields.io/badge/version-1.3-blue.svg)
 
 **A Scalable Cross-Platform DFIR Framework for Automated Evidence Collection, Correlation, and Cloud Forensic Investigation**
@@ -438,9 +438,8 @@ events; anomaly-based detection; Azure and GCP; Docker and Kubernetes; a blockch
 
 ## How to cite
 
-<!-- TODO: replace the placeholder below with the real DOI after the Zenodo release of v1.3. -->
-
-If you use CP-DFIR, please cite the software archive:
+If you use CP-DFIR, please cite the software archive on Zenodo: v1.3 is [10.5281/zenodo.23973650](https://doi.org/10.5281/zenodo.23973650).
+To cite all versions (this DOI always resolves to the latest release), use [10.5281/zenodo.23973649](https://doi.org/10.5281/zenodo.23973649).
 
 ```bibtex
 @software{vasava_cpdfir_2026,
@@ -448,7 +447,7 @@ If you use CP-DFIR, please cite the software archive:
   title   = {CP-DFIR: Cross-Platform DFIR Framework},
   version = {1.3},
   year    = {2026},
-  doi     = {10.5281/zenodo.XXXXXXX},
+  doi     = {10.5281/zenodo.23973650},
   url     = {https://github.com/jayveerv/DFIR-Framework-WebApp}
 }
 ```

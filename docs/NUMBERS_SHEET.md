@@ -16,6 +16,7 @@ Har number neeche likhi file ya run se hai, koi bhi haath se nahi likha. Wording
 | Scalability | 104,634 records in **7.713 s**; throughput 16,772 → 13,565 records/s (README me rounded: 16,800 → 13,600); F1 1.000 at every size | `results/scalability.csv` (purana laptop run, Python 3.13.16) |
 | Cloud emulated | 14/14 (single region), 15/15 (all regions), 0 FP | `results/evaluation.json` → `cloud_emulated` |
 | Tests (CP-DFIR) | **105** (62 + 25 Merkle + 17 web + 1 collector named-pipe regression). boto3/moto ke saath: 105/105 pass | `pytest tests` on `main` |
+| Zenodo DOI | v1.3: **10.5281/zenodo.23973650**; all versions (concept): 10.5281/zenodo.23973649. Release `v1.3` = commit `e9aa892` | zenodo.org/records/23973650 |
 | Showcase test count (Claude 7) | 105 + 55 + 41 = **201** | Brief ka formula |
 
 ## Dhyan

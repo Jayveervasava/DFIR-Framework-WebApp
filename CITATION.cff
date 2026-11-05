@@ -27,5 +27,5 @@ keywords:
   - MITRE ATT&CK
   - chain of custody
   - Merkle tree
-# doi: 10.5281/zenodo.XXXXXXX   # add after the Zenodo release
+doi: 10.5281/zenodo.23973650
 date-released: "2026-11-05"
