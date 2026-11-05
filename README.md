@@ -129,16 +129,24 @@ All numbers and figures come from the real outputs in `results/` and `cases/`; n
 
 | What | Command | Output |
 |---|---|---|
-| Simulated scenarios S1 to S5, ablation, tamper tests, scalability (full run, about 1 minute) | `python main.py evaluate` | `results/evaluation.json`, `results/metrics_summary.csv`, `results/scalability.csv`, `results/evaluation_report.html` |
+| Simulated scenarios S1 to S5, ablation, tamper tests (6 attack types x 5 scenarios = 30 attempts, plus untouched controls), scalability (full run, about 1 minute) | `python main.py evaluate` | `results/evaluation.json`, `results/metrics_summary.csv`, `results/scalability.csv`, `results/evaluation_report.html` |
 | Same, but scalability only up to 10,000 records | `python main.py evaluate --quick` | same files |
 | Real public data: EVTX-ATTACK-SAMPLES, LogHub, Stratus Red Team, plus the held-out set (downloads about 44 MB on the first run, needs internet) | `python main.py real-eval` | `results/real_data_results.json`, `results/real_data_report.html`, `results/heldout_results.json` |
 | Tamper-detection demo | `python main.py tamper-demo` | console output |
-| Dashboard with all figures | `python make_dashboard.py` | `results/dashboard.html` |
+| Dashboard with all figures (Figure 6 = development vs held-out detection bars, section Real-World Validation) | `python make_dashboard.py` | `results/dashboard.html` |
+| Table 8, step 1: download the held-out samples (needs internet) | `python -c "import heldout; heldout.fetch('.')"` | `real_data/heldout/` |
+| Table 8, step 2: Chainsaw on the 117 in-scope held-out samples (**UNTESTED, run on laptop**; needs the Chainsaw binary and a Sigma clone, see `scripts/README.md`) | `python scripts/run_chainsaw.py --chainsaw PATH --sigma DIR --mapping FILE` | `results/table8/chainsaw_per_sample.csv`, `chainsaw_meta.json` |
+| Table 8, step 3: Hayabusa on the same 117 samples (**UNTESTED, run on laptop**) | `python scripts/run_hayabusa.py --hayabusa PATH` | `results/table8/hayabusa_per_sample.csv`, `hayabusa_meta.json` |
+| Table 8, step 4: build the table (CP-DFIR frozen v1.1 row + both tools; a tool without results is shown as UNTESTED) | `python scripts/table8.py` | `results/table8.csv`, `results/table8.md` |
+| Check the Table 8 parsers on made-up fixtures (does not run the real tools) | `python scripts/table8.py --selftest` | console output |
+| False alarms on benign logs (**not measured yet**: needs a labelled real benign log set, see `scripts/README.md`) | `python scripts/benign_fp.py --dir DIR --assert-benign --n-sources N --source "NAME@COMMIT"` | `results/benign_fp.json` |
 | Unit and integration tests | `python -m pytest tests -v` | console output |
 
 The frozen held-out result that the paper reports is `results/heldout_frozen_v1.1.json` (rule fingerprint `804638ca9a700716`).
 Downloaded datasets are not stored in the repository; they are fetched into `real_data/` on first use.
 Timings in the scalability table depend on the machine; the shipped `results/scalability.csv` was produced on the author's computer.
+
+Not yet measured, and therefore not in the paper's numbers: Chainsaw and Hayabusa on the 117 samples, and the false-positive rate on real benign logs (the single-host result in Section 3b is one data point, not a rate).
 
 ---
 
