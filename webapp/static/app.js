@@ -38,6 +38,9 @@ const ic = (k, s = 18) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" f
 const LOGO = `<svg width="34" height="34" viewBox="0 0 48 48"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#22D3EE"/><stop offset="1" stop-color="#A78BFA"/></linearGradient></defs>
 <path d="M24 3 42 10v13c0 11-7.6 19.6-18 22C13.6 42.6 6 34 6 23V10z" fill="none" stroke="url(#lg)" stroke-width="3"/>
 <circle cx="22" cy="22" r="7" fill="none" stroke="url(#lg)" stroke-width="2.6"/><path d="m27 27 6 6" stroke="url(#lg)" stroke-width="3" stroke-linecap="round"/></svg>`;
+const awsOn = () => !S.sess || S.sess.aws_collect_enabled !== false;      /* flag missing (undefined) = old behaviour: show */
+const reanOn = () => !S.sess || S.sess.can_reanalyse !== false;
+const REPO = "https://github.com/jayveerv/DFIR-Framework-WebApp";
 const TITLE = "A Scalable Cross-Platform DFIR Framework for Automated Evidence Collection, Correlation, and Cloud Forensic Investigation";
 
 /* ---------------------------------------------------------------- state & api */
@@ -115,6 +118,7 @@ async function route() {
   if (h[0] === "login" || h[0] === "setup" || !h[0]) { location.hash = "#/cases"; return; }
   if (h[0] === "c" && h[1]) return openCase(h[1], false, h[2] || "overview");
   S.cid = null; S.case = null; S.res = null;
+  if (h[0] === "verify-proof") return shell(viewVerifyProof, "verify-proof", "Verify proof");
   if (h[0] === "system") return shell(viewSystem, "system", "System & self-test");
   if (h[0] === "eval") { const e = EVAL.find(x => x[0] === h[1]) || EVAL[0]; return shell(v => evalView(v, e[3]), "eval-" + e[0], e[2]); }
   if (h[0] === "users") return shell(viewUsers, "users", "Users & audit log");
@@ -123,18 +127,20 @@ async function route() {
 
 /* ---------------------------------------------------------------- auth */
 function authPage(inner) {
-  $("#app").innerHTML = `<div class="auth"><div class="authbox"><div class="authlogo">${LOGO.replace('width="34" height="34"', 'width="46" height="46"')}<div><b>CP-DFIR</b><small>Investigation Console</small></div></div>
-  <div class="card">${inner}</div><div class="ttlbig">${esc(TITLE)}</div></div></div>`;
+  const ver = S.sess && S.sess.version ? `v${esc(S.sess.version)}` : "";
+  $("#app").innerHTML = `<div class="auth"><div class="authbox"><div class="authlogo">${LOGO.replace('width="34" height="34"', 'width="46" height="46"')}<div><b>CP-DFIR</b><small>Investigation Console${ver ? ` · ${ver}` : ""}</small></div></div>
+  <div class="card">${inner}</div><div class="ttlbig">${esc(TITLE)}${ver ? `<br><span class="mono">CP-DFIR ${ver}</span> · MIT licence` : ""}</div></div></div>`;
 }
 function viewLogin() {
-  authPage(`<h2>Analyst sign in</h2><div class="sub">Every action you take is recorded in the case activity log and the chain-of-custody ledger.</div>
-  <form id="lf"><div class="fr"><label class="f">Username</label><input class="in" name="username" autocomplete="username" autofocus></div>
+  const g = !!S.sess.guest;
+  const form = `<form id="lf"><div class="fr"><label class="f">Username</label><input class="in" name="username" autocomplete="username" ${g ? "" : "autofocus"}></div>
   <div class="fr"><label class="f">Password</label><input class="in" type="password" name="password" autocomplete="current-password"></div>
-  <div class="err" id="lerr"></div><button class="btn pri" style="width:100%;justify-content:center">${ic("lock", 16)} Sign in</button></form>
-  ${S.sess.guest ? `<div style="display:flex;align-items:center;gap:10px;margin:16px 0 12px;color:var(--mu2);font-size:12px"><span style="flex:1;height:1px;background:var(--line)"></span>or<span style="flex:1;height:1px;background:var(--line)"></span></div>
-  <button class="btn" id="guest" style="width:100%;justify-content:center">${ic("play", 15)} Try demo (no password)</button>
-  <div class="hint" style="text-align:center;margin-top:8px">Guest access: explore the analysed demo case, or create your own cases (upload evidence, collectors, simulated scenarios), analyse and verify. Your cases are private to your session${S.sess.retention_hours ? ` and deleted after ${S.sess.retention_hours} h` : ""}.</div>` : ""}`);
-  const g = $("#guest"); if (g) g.onclick = async () => { try { await api("POST", "/api/guest"); S.sess = null; location.hash = "#/cases"; route(); } catch (er) { $("#lerr").textContent = er.message; } };
+  <div class="err" id="lerr"></div><button class="btn ${g ? "" : "pri"}" style="width:100%;justify-content:center">${ic("lock", 16)} Sign in</button></form>`;
+  authPage(g ? `<h2>Explore the live demo</h2><div class="sub">No account needed. Open the analysed demo case, or create your own cases: upload evidence, run collectors or simulated scenarios, analyse and verify.</div>
+  <button class="btn pri big" id="guest">${ic("play", 18)} Try demo</button>
+  <div class="hint" style="text-align:center;margin:8px 0 0">Your cases are private to your session${S.sess.retention_hours ? ` and deleted after ${S.sess.retention_hours} h` : ""}.</div>
+  <div class="orsep"><span></span>analyst sign in<span></span></div>${form}` : `<h2>Analyst sign in</h2><div class="sub">Every action you take is recorded in the case activity log and the chain-of-custody ledger.</div>${form}`);
+  const gb = $("#guest"); if (gb) gb.onclick = async () => { try { await api("POST", "/api/guest"); S.sess = null; location.hash = "#/cases"; route(); } catch (er) { $("#lerr").textContent = er.message; } };
   $("#lf").onsubmit = async e => { e.preventDefault(); const f = new FormData(e.target);
     try { await api("POST", "/api/login", {username:f.get("username"), password:f.get("password")}); S.sess = null; location.hash = "#/cases"; route(); }
     catch (er) { $("#lerr").textContent = er.message; } };
@@ -157,7 +163,7 @@ async function logout() { try { await api("POST", "/api/logout"); } catch (e) {}
 function navHtml(active) {
   const u = S.sess.user, c = S.case, r = S.res;
   const a = (href, k, label, key, cnt, red) => `<a href="${href}" class="${active === key ? "on" : ""}">${ic(k, 17)}<span>${label}</span>${cnt != null ? `<span class="cnt ${red ? "r" : ""}">${cnt}</span>` : ""}</a>`;
-  let h = `<div class="grp">Workspace</div>${a("#/cases", "fold", "All cases", "cases")}`;
+  let h = `<div class="grp">Workspace</div>${a("#/cases", "fold", "All cases", "cases")}${a("#/verify-proof", "chk", "Verify proof", "verify-proof")}`;
   if (c) {
     const b = `#/c/${c.id}/`, lr = c.last_run || {};
     h += `<div class="grp">Open case</div><div class="casebox"><div class="id">${esc(c.id)}</div><div class="t">${esc(c.title)}</div><div style="margin-top:6px"><span class="status ${c.job ? "running" : c.status}">${c.job ? "job running" : esc(c.status)}</span>${c.shared && !c.writable ? ' <span class="status">read-only demo</span>' : ""}${c.expires ? `<div class="note" style="margin-top:4px;font-size:10.5px">auto-deleted ${esc(utc(c.expires))}</div>` : ""}</div></div>
@@ -191,10 +197,10 @@ function shell(view, active, crumb) {
   crumb = String(crumb == null ? "" : crumb).replace(/&amp;/g, "&");
   $("#crumb").innerHTML = S.case ? `<b>${esc(S.case.id)}</b> · ${esc(S.case.title)} <span style="color:var(--mu2)">/ ${esc(crumb)}</span>` : `<b>${esc(crumb)}</b>`;
   const c = S.case, lv = c && c.last_verify;
-  $("#tpill").innerHTML = c && c.last_run ? (lv ? `<span class="pill ${lv.ok ? "ok" : "bad"}">${lv.ok ? '<span class="dot"></span>' : ic("x", 12)} custody ${lv.ok ? "verified" : "TAMPERED"} ${ago(lv.time)}</span>`
-    : `<span class="pill ${c.last_run.custody_ok ? "ok" : "bad"}">${c.last_run.custody_ok ? '<span class="dot"></span>' : ""} custody ${c.last_run.custody_ok ? "verified at analysis" : "FAILED"}</span>`) : "";
+  $("#tpill").innerHTML = c && c.last_run ? (lv ? `<span class="pill ${lv.ok ? "ok" : "bad"}">${lv.ok ? '<span class="dot"></span>' : ic("x", 12)} custody ${lv.ok ? "verified" : "TAMPERED"}<span class="pl"> ${ago(lv.time)}</span></span>`
+    : `<span class="pill ${c.last_run.custody_ok ? "ok" : "bad"}">${c.last_run.custody_ok ? '<span class="dot"></span>' : ""} custody ${c.last_run.custody_ok ? "verified<span class=\"pl\"> at analysis</span>" : "FAILED"}</span>`) : "";
   tip.style.display = "none";
-  const m = $("#main"); m.innerHTML = `<div class="view" id="v"></div>`;
+  const m = $("#main"); m.innerHTML = `<div class="view" id="v"></div><div class="appfoot">${esc(S.sess.app || "CP-DFIR")}${S.sess.version ? ` v${esc(S.sess.version)}` : ""} · MIT licence · <a href="${REPO}" target="_blank" rel="noopener">GitHub</a></div>`;
   window.scrollTo(0, 0);
   try { const out = view($("#v")); if (out && out.catch) out.catch(fail); } catch (e) { fail(e); console.error(e); }
 }
@@ -280,12 +286,12 @@ function needRun(v, what) {
 }
 function wire(v) { v.querySelectorAll("[data-run]").forEach(b => b.onclick = analyse); v.querySelectorAll("[data-verify]").forEach(b => b.onclick = () => { location.hash = `#/c/${S.cid}/custody`; setTimeout(verify, 200); }); }
 function analyse() { startJob("analyze", {}, `Analysing ${S.cid}`); }
-const staleBox = () => S.case.status === "stale" ? `<div class="info" style="margin-bottom:16px"><b>Results are out of date.</b> Evidence or settings changed after the last analysis. <button class="btn sm" data-run style="margin-left:8px">${ic("ref", 13)} Re-analyse</button></div>` : "";
+const staleBox = () => S.case.status === "stale" ? `<div class="info" style="margin-bottom:16px"><b>Results are out of date.</b> Evidence or settings changed after the last analysis.${reanOn() ? ` <button class="btn sm" data-run style="margin-left:8px">${ic("ref", 13)} Re-analyse</button>` : " Re-analysis is turned off on this instance."}</div>` : "";
 
 /* ---- overview */
 function tOverview(v) {
   const c = S.case, lr = c.last_run;
-  const acts = `<button class="btn pri" data-run ${c.evidence_items.length ? "" : "disabled"}>${ic("play", 15)} ${lr ? "Re-analyse" : "Analyse"}</button>${lr ? `<button class="btn" data-verify>${ic("cus", 15)} Verify custody</button>` : ""}`;
+  const acts = `${lr && !reanOn() ? "" : `<button class="btn pri" data-run ${c.evidence_items.length ? "" : "disabled"}>${ic("play", 15)} ${lr ? "Re-analyse" : "Analyse"}</button>`}${lr ? `<button class="btn" data-verify>${ic("cus", 15)} Verify custody</button>` : ""}`;
   v.innerHTML = head(esc(c.id), esc(c.title), esc(c.description) || `Created ${utc(c.created)} by ${esc(c.created_by)}`, acts);
   if (!ready()) { needRun(v, "the results"); return; }
   const R = S.res, run = R.run, cross = R.incidents.filter(i => i.cross).length;
@@ -325,7 +331,7 @@ function donut(m, label) {
 function tEvidence(v) {
   const c = S.case, items = c.evidence_items, pm = S.sess.public_mode, win = S.sess.platform === "win32";
   v.innerHTML = head("Evidence intake", "Evidence", "Originals are stored read-only with their SHA-256 at intake. At analysis time the framework copies them into the case, hashes them again and records every step in the custody ledger.",
-    c.writable === false ? "" : `<button class="btn pri" data-run ${items.length ? "" : "disabled"}>${ic("play", 15)} ${c.last_run ? "Re-analyse" : "Analyse"} ${items.length} file(s)</button>`) + staleBox() +
+    c.writable === false || (c.last_run && !reanOn()) ? "" : `<button class="btn pri" data-run ${items.length ? "" : "disabled"}>${ic("play", 15)} ${c.last_run ? "Re-analyse" : "Analyse"} ${items.length} file(s)</button>`) + staleBox() +
   (c.writable === false ? `<div class="info" style="margin-bottom:16px"><b>Read-only demo case.</b> You can explore every page, verify custody and download the report. To upload evidence or run collectors, go to <a href="#/cases">All cases</a> and create your own case.</div>` : "") +
   `<div class="g g32"><div><div class="card" style="margin-bottom:16px"><h3><i>${ic("up", 15)}</i>Upload evidence</h3>
   <div class="drop" id="drop">${ic("up", 34)}<div class="big">Drop files here or click to choose</div><div class="note">Windows <span class="mono">.evtx</span> / wevtutil <span class="mono">.xml</span> · Linux <span class="mono">auth.log</span> / <span class="mono">secure</span> · AWS <span class="mono">cloudtrail.json</span> · host/ and cloud/ artifacts · <span class="mono">case_config.json</span> · or a <span class="mono">.zip</span> of any of these</div></div>
@@ -342,7 +348,7 @@ function tEvidence(v) {
   <div class="card" style="margin-top:16px"><h3><i>${ic("sys", 15)}</i>Case settings</h3><form id="cfgf">${cfgForm(c.config)}<button class="btn" type="submit">${ic("chk", 14)} Save settings</button></form></div></div>
   <div>${collectorCard(c)}${collectionsCard(c)}<div class="card" style="margin-bottom:16px"><h3><i>${ic("bolt", 15)}</i>Collect evidence</h3>
   ${coll("triage", "cpu", "var(--host)", "Live triage — this computer", "Processes, network connections, accounts, persistence, recent files and security logs, read-only, in order of volatility.", pm ? "runs on the console's own machine - use the collector above for your computer" : "")}
-  ${coll("aws", "cld", "var(--aws)", "AWS — CloudTrail + account state", "Read-only API calls: CloudTrail events, IAM users/keys/MFA, roles, S3 public access, security groups, trails.")}
+  ${awsOn() ? coll("aws", "cld", "var(--aws)", "AWS — CloudTrail + account state", "Read-only API calls: CloudTrail events, IAM users/keys/MFA, roles, S3 public access, security groups, trails.") : awsLocalNote()}
   ${coll("ssh", "term", "var(--lin)", "Linux server — auth log over SSH", "Copies /var/log/auth.log (or /var/log/secure) with key-based SSH." + (pm ? " Hosted console: public Internet hosts only." : ""))}
   ${coll("winlog", "win", "var(--win)", "Windows — export Security log", "wevtutil export of this computer's Security log (run the console as Administrator).", pm ? "runs on the console's own machine - use the collector above for your computer" : (win ? "" : "only when the console runs on Windows"))}
   ${coll("sample", "lab", "var(--vi)", "Simulated attack scenario", "Adds the framework's generated Windows + Linux + AWS logs for scenario S1–S5 (with ground truth).")}</div></div></div>`;
@@ -355,6 +361,9 @@ function tEvidence(v) {
   v.querySelectorAll("[data-del]").forEach(b => b.onclick = () => delEvidence(b.dataset.del));
   v.querySelectorAll("[data-coll]").forEach(b => b.onclick = () => COLL[b.dataset.coll]());
   $("#cfgf").onsubmit = async e => { e.preventDefault(); try { await api("PATCH", `/api/cases/${c.id}`, Object.fromEntries(new FormData(e.target).entries())); toast("Settings saved", "var(--gr)"); openCase(c.id, true); } catch (er) { fail(er); } };
+}
+function awsLocalNote() {
+  return `<div class="coll" style="--c:var(--aws)"><div class="ic">${ic("cld", 20)}</div><div><div class="x">AWS collection is off on this hosted demo</div><div class="y">Cloud credentials should never be typed into a shared server. To collect CloudTrail and account state from your own AWS account, <b>run CP-DFIR locally</b> (your keys and data stay on your machine): <a href="${REPO}" target="_blank" rel="noopener">install instructions on GitHub</a>. You can still upload an exported <span class="mono">cloudtrail.json</span> above, or add scenario S1_cloud.</div></div></div>`;
 }
 function collectorCard(c) {
   return `<div class="card" style="margin-bottom:16px"><h3><i>${ic("dl", 15)}</i>Collect from a computer</h3>
@@ -458,12 +467,15 @@ function drawInc(inc) {
   $("#ievt").innerHTML = evTable(inc.events.slice(0, 400)) + (inc.events_total > 400 ? `<div class="note" style="margin-top:8px">showing 400 of ${inc.events_total} — open the explorer for all</div>` : "");
   wireEvRows($("#ievt"));
 }
+const proofUrl = id => `/api/cases/${encodeURIComponent(S.cid)}/findings/${encodeURIComponent(id)}/proof`;
+const proofBtn = (id, small) => `<a class="btn ${small ? "sm ghost" : ""}" href="${proofUrl(id)}" download data-proof title="Download a Merkle inclusion proof for this finding">${ic("dl", 13)} Download proof</a>`;
 function evTable(rows, showInc) {
-  return `<div class="tw max"><table><thead><tr><th>Time (UTC)</th><th>Source</th><th>Host</th><th>Event</th><th>User</th><th>Src IP</th><th>Target / detail</th><th>Rules</th>${showInc ? "" : ""}</tr></thead><tbody>
+  return `<div class="tw max"><table><thead><tr><th>Time (UTC)</th><th>Source</th><th>Host</th><th>Event</th><th>User</th><th>Src IP</th><th>Target / detail</th><th>Rules</th><th>Proof</th></tr></thead><tbody>
   ${rows.map(e => `<tr class="click" data-ev="${esc(e.id)}"><td class="mono" style="white-space:nowrap">${utc(e.t)}</td><td>${plat(e.s)}</td><td class="mono">${esc(e.h)}</td><td class="mono">${esc(e.ty)}</td><td class="mono">${esc(e.u)}</td><td class="mono">${esc(e.ip)}</td>
-  <td class="trunc" title="${esc(e.tg)}">${esc(e.tg)}</td><td>${e.f.length ? `<span class="tag sev-${esc(e.sv)}" data-tip="${esc(e.f.join(", "))}">${esc(e.f[0])}${e.f.length > 1 ? " +" + (e.f.length - 1) : ""}</span>` : '<span style="color:var(--mu2)">–</span>'}</td></tr>`).join("") || '<tr><td colspan="8" class="note">no events</td></tr>'}</tbody></table></div>`;
+  <td class="trunc" title="${esc(e.tg)}">${esc(e.tg)}</td><td>${e.f.length ? `<span class="tag sev-${esc(e.sv)}" data-tip="${esc(e.f.join(", "))}">${esc(e.f[0])}${e.f.length > 1 ? " +" + (e.f.length - 1) : ""}</span>` : '<span style="color:var(--mu2)">–</span>'}</td>
+  <td style="white-space:nowrap">${e.f.length ? proofBtn(e.id, true) : '<span style="color:var(--mu2)">–</span>'}</td></tr>`).join("") || '<tr><td colspan="9" class="note">no events</td></tr>'}</tbody></table></div>`;
 }
-function wireEvRows(root) { root.querySelectorAll("[data-ev]").forEach(r => r.onclick = () => showEvent(r.dataset.ev)); }
+function wireEvRows(root) { root.querySelectorAll("[data-ev]").forEach(r => r.onclick = ev => { if (ev.target.closest("[data-proof]")) return; showEvent(r.dataset.ev); }); }
 async function showEvent(id) {
   try {
     const e = await api("GET", `/api/cases/${S.cid}/events/${id}`);
@@ -472,58 +484,109 @@ async function showEvent(id) {
       ["Severity", e.severity], ["Rules", (e.flags || []).join(", ")], ["ATT&CK", (e.techniques || []).join(", ")], ["Evidence file", `${e.source_file} : line/record ${e.line_ref}`]].filter(x => x[1] != null && x[1] !== "");
     modal(`Event <span class="mono">${esc(e.event_id)}</span>`, `<div class="kv">${kv.map(([k, x]) => `<div>${esc(k)}</div><div class="${/ID|Time|IP|key|file/i.test(k) ? "mono" : ""}">${esc(x)}</div>`).join("")}</div>
     <h3 style="font-size:12px;color:var(--mu);text-transform:uppercase;letter-spacing:.5px;margin:18px 0 8px">Original record</h3><pre class="json">${esc(e.excerpt || e.raw || "")}${e.extra ? "\n\n" + esc(JSON.stringify(e.extra, null, 1)) : ""}</pre>
-    <div class="note">Provenance: the record can be found in the acquired evidence copy <span class="mono">${esc(e.source_file)}</span>, whose SHA-256 is in the custody ledger.</div>`, "", true);
+    <div class="note">Provenance: the record can be found in the acquired evidence copy <span class="mono">${esc(e.source_file)}</span>, whose SHA-256 is in the custody ledger.</div>
+    ${(e.flags || []).length ? `<div class="note" style="margin-top:10px">This event is a finding: download its Merkle inclusion proof and check it later on the <a href="#/verify-proof" data-close-link>Verify proof</a> page.</div>` : ""}`,
+      `${(e.flags || []).length ? proofBtn(e.event_id) : ""}<button class="btn" data-close>Close</button>`, true);
+    $$("#modal [data-close],#modal [data-close-link]").forEach(b => b.addEventListener("click", closeModal));
   } catch (er) { fail(er); }
 }
 function graph(inc) {
-  const KCOL = {ip:"var(--rd)", cred:"var(--am)", key:"var(--cy)"}, KX = {ip:150, cred:520, key:890}, TT = {ip:"ATTACKER IP", cred:"CREDENTIAL FILE", key:"CLOUD ACCESS KEY"};
+  const gw = $("#gwrap"), narrow = gw.clientWidth > 0 && gw.clientWidth < 640;
+  const KCOL = {ip:"var(--rd)", cred:"var(--am)", key:"var(--cy)"}, TT = {ip:"ATTACKER IP", cred:"CREDENTIAL FILE", key:"CLOUD ACCESS KEY"};
+  const NW = narrow ? 236 : 216, HW = NW / 2, NH = 26;
   const cols = {ip:[], cred:[], key:[]}; inc.entities.forEach(n => (cols[n.kind] || (cols[n.kind] = [])).push(n));
-  const mx = Math.max(1, ...Object.values(cols).map(l => l.length)), W = 1060, H = Math.max(260, 70 + mx * 84);
-  const present = Object.keys(cols).filter(k => cols[k].length); present.forEach((k, i) => KX[k] = present.length === 1 ? W / 2 : Math.round(150 + i * (W - 300) / (present.length - 1)));
-  const pos = {}; Object.entries(cols).forEach(([k, l]) => l.forEach((n, i) => { pos[n.id] = {x:KX[k] || 520, y:H / 2 + (i - (l.length - 1) / 2) * 84 + 12, n}; }));
+  const order = ["ip", "cred", "key"].concat(Object.keys(cols).filter(k => !KCOL[k]));
+  const present = order.filter(k => cols[k] && cols[k].length);
+  const pos = {}, heads = [];
+  let W, H;
+  if (narrow) {            /* phone: groups stacked top to bottom, one node per row */
+    W = 320; let y = 12;
+    present.forEach(k => { heads.push({k, x:W / 2 - 10, y:y + 12}); y += 28;
+      cols[k].forEach(n => { pos[n.id] = {x:W / 2 - 10, y:y + NH, n}; y += 72; }); y += 12; });
+    H = y;
+  } else {                 /* laptop: one column per entity kind */
+    const mx = Math.max(1, ...present.map(k => cols[k].length)); W = 1060; H = Math.max(260, 70 + mx * 84);
+    const x0 = HW + 50, x1 = W - HW - 50;
+    present.forEach((k, i) => { const x = present.length === 1 ? W / 2 : Math.round(x0 + i * (x1 - x0) / (present.length - 1)); heads.push({k, x, y:26});
+      cols[k].forEach((n, j) => { pos[n.id] = {x, y:H / 2 + (j - (cols[k].length - 1) / 2) * 84 + 12, n}; }); });
+  }
   const SH = {"credential file read in session":"credential read", "credential inventory (file holds key)":"file holds key", "key created by key":"key created"};
   let s = `<svg id="gsvg" viewBox="0 0 ${W} ${H}"><defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="var(--mu)"/></marker>
-  <filter id="gl"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><g id="vp">`;
-  Object.entries(TT).forEach(([k, t]) => { if (cols[k].length) s += `<text x="${KX[k]}" y="26" text-anchor="middle" font-size="11" letter-spacing="1.6" font-weight="700" fill="${KCOL[k]}">${t}</text>`; });
-  inc.links.forEach(l => { if (pos[l.a] && pos[l.b]) s += `<g class="ed" data-a="${esc(l.a)}" data-b="${esc(l.b)}"><path class="edge" stroke="var(--mu)" stroke-width="1.8" fill="none" marker-end="url(#ar)"/><text font-size="10.5" text-anchor="middle" fill="var(--mu)" style="paint-order:stroke;stroke:var(--bg2);stroke-width:4px">${esc(SH[l.reason] || l.reason)} · ${l.events}</text></g>`; });
-  Object.values(pos).forEach(p => { const n = p.n, lab = n.id.split(":").slice(1).join(":"), short = lab.length > 26 ? "…" + lab.slice(-25) : lab, c = KCOL[n.kind] || "var(--vi)";
+  <filter id="gl" x="-10%" y="-30%" width="120%" height="160%"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><g id="vp">`;
+  heads.forEach(h => { if (TT[h.k]) s += `<text x="${h.x}" y="${h.y}" text-anchor="middle" font-size="12.5" letter-spacing="1.6" font-weight="700" fill="${KCOL[h.k]}">${TT[h.k]}</text>`; });
+  const links = inc.links.filter(l => pos[l.a] && pos[l.b]);
+  links.forEach(l => { const lab = `${SH[l.reason] || l.reason} · ${l.events}`; s += `<g class="ed" data-a="${esc(l.a)}" data-b="${esc(l.b)}" data-tip="${esc(lab)}"><path class="edge" stroke="var(--mu)" stroke-width="1.8" fill="none" marker-end="url(#ar)"/><text font-size="12" text-anchor="middle" fill="var(--mu)" style="paint-order:stroke;stroke:var(--bg2);stroke-width:4px">${esc(lab)}</text></g>`; });
+  Object.values(pos).forEach(p => { const n = p.n, lab = n.id.split(":").slice(1).join(":"), short = lab.length > (narrow ? 24 : 26) ? "…" + lab.slice(-(narrow ? 23 : 25)) : lab, c = KCOL[n.kind] || "var(--vi)";
     s += `<g class="gnode" data-id="${esc(n.id)}" transform="translate(${p.x},${p.y})" data-tip="<b>${esc(n.kind.toUpperCase())}</b><br><span class=mono>${esc(lab)}</span><br>${esc(n.platforms.map(x => PN[x] || x).join(" + "))} · ${n.events} events">
-    <rect x="-108" y="-26" width="216" height="52" rx="12" fill="color-mix(in srgb,${c} 16%,var(--panel))" stroke="${c}" stroke-width="1.6" filter="url(#gl)"/>
-    <text x="-95" y="-4" font-size="12" font-weight="700" fill="var(--tx)" font-family="Consolas,monospace">${esc(short)}</text>
-    <text x="-95" y="14" font-size="10.5" fill="var(--mu)">${n.events} event${n.events === 1 ? "" : "s"}</text>
-    ${n.platforms.map((x, i) => `<circle cx="${92 - i * 14}" cy="12" r="5" fill="${PC[x] || "var(--mu)"}"/>`).join("")}</g>`; });
-  s += `</g></svg><div class="gtools"><button id="zi">+</button><button id="zo">−</button><button id="zr">⟲</button></div>`;
-  $("#gwrap").innerHTML = s;
+    <rect x="${-HW}" y="${-NH}" width="${NW}" height="${NH * 2}" rx="12" fill="color-mix(in srgb,${c} 16%,var(--panel))" stroke="${c}" stroke-width="1.6" filter="url(#gl)"/>
+    <text x="${-HW + 13}" y="-4" font-size="12.5" font-weight="700" fill="var(--tx)" font-family="Consolas,monospace">${esc(short)}</text>
+    <text x="${-HW + 13}" y="15" font-size="11.5" fill="var(--mu)">${n.events} event${n.events === 1 ? "" : "s"}</text>
+    ${n.platforms.map((x, i) => `<circle cx="${HW - 16 - i * 14}" cy="12" r="5" fill="${PC[x] || "var(--mu)"}"/>`).join("")}</g>`; });
+  s += `</g></svg><div class="gtools"><span class="gh">zoom</span><button id="zi" title="Zoom in">+</button><button id="zo" title="Zoom out">−</button><button id="zr" title="Fit to view">⟲</button></div>`;
+  gw.innerHTML = s;
   const svg = $("#gsvg"), vp = $("#vp"); let T = {x:0, y:0, k:1};
   const apply = () => vp.setAttribute("transform", `translate(${T.x},${T.y}) scale(${T.k})`);
+  const loop = (a, b) => Math.abs(a.x - b.x) < 5;
   const upd = () => svg.querySelectorAll(".ed").forEach(e => { const a = pos[e.dataset.a], b = pos[e.dataset.b]; let d, mx2, my;
-    if (Math.abs(a.x - b.x) < 5) { const x = a.x + 108; d = `M${x} ${a.y}C${x + 70} ${a.y} ${x + 70} ${b.y} ${x + 4} ${b.y}`; mx2 = x + 56; my = (a.y + b.y) / 2; }
-    else { const s1 = a.x < b.x ? 1 : -1, x1 = a.x + 108 * s1, x2 = b.x - 112 * s1; d = `M${x1} ${a.y}C${(x1 + x2) / 2} ${a.y} ${(x1 + x2) / 2} ${b.y} ${x2} ${b.y}`; mx2 = (x1 + x2) / 2; my = (a.y + b.y) / 2 - 6; }
-    e.querySelector("path").setAttribute("d", d); const t = e.querySelector("text"); t.setAttribute("x", mx2); t.setAttribute("y", my); });
+    if (narrow) {
+      if (loop(a, b) && Math.abs(a.y - b.y) < 130) { const x = a.x + HW, o = 34; d = `M${x} ${a.y}C${x + o} ${a.y} ${x + o} ${b.y} ${x + 4} ${b.y}`; mx2 = x + o; my = (a.y + b.y) / 2; }
+      else { const sg = a.y < b.y ? 1 : -1, y1 = a.y + NH * sg, y2 = b.y - (NH + 4) * sg, ym = (y1 + y2) / 2; d = `M${a.x} ${y1}C${a.x} ${ym} ${b.x} ${ym} ${b.x} ${y2}`; mx2 = (a.x + b.x) / 2; my = ym; }
+    } else if (loop(a, b)) { const x = a.x + HW; d = `M${x} ${a.y}C${x + 70} ${a.y} ${x + 70} ${b.y} ${x + 4} ${b.y}`; mx2 = x + 56; my = (a.y + b.y) / 2; }
+    else { const s1 = a.x < b.x ? 1 : -1, x1 = a.x + HW * s1, x2 = b.x - (HW + 4) * s1; d = `M${x1} ${a.y}C${(x1 + x2) / 2} ${a.y} ${(x1 + x2) / 2} ${b.y} ${x2} ${b.y}`; mx2 = (x1 + x2) / 2; my = (a.y + b.y) / 2 - 6; }
+    e.querySelector("path").setAttribute("d", d); const t = e.querySelector("text"); t.setAttribute("x", mx2); t.setAttribute("y", my);
+    t.style.display = narrow && loop(a, b) ? "none" : ""; });
   upd();
-  const pt = ev => { const r = svg.getBoundingClientRect(), sx = W / r.width, sy = H / r.height; return {x:((ev.clientX - r.left) * sx - T.x) / T.k, y:((ev.clientY - r.top) * sy - T.y) / T.k}; };
+  /* fit-to-view: the viewBox is the bounding box of everything drawn (nodes, headers, edge labels) + padding, so nothing is cut off */
+  let VB = {x:0, y:0, w:W, h:H};
+  const fit = () => { const P = Object.values(pos); let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    P.forEach(p => { x0 = Math.min(x0, p.x - HW); x1 = Math.max(x1, p.x + HW); y0 = Math.min(y0, p.y - NH); y1 = Math.max(y1, p.y + NH); });
+    heads.forEach(h => { y0 = Math.min(y0, h.y - 16); });
+    links.forEach(l => { const a = pos[l.a], b = pos[l.b]; if (loop(a, b)) x1 = Math.max(x1, a.x + HW + (narrow ? 40 : 118)); });
+    if (!isFinite(x0)) return; const pd = 26;
+    VB = {x:x0 - pd, y:y0 - pd, w:x1 - x0 + 2 * pd, h:y1 - y0 + 2 * pd}; svg.setAttribute("viewBox", `${VB.x} ${VB.y} ${VB.w} ${VB.h}`);
+    T = {x:0, y:0, k:1}; apply(); };
+  fit();
+  const pt = ev => { const r = svg.getBoundingClientRect(), sx = VB.w / r.width, sy = VB.h / r.height; return {x:((ev.clientX - r.left) * sx + VB.x - T.x) / T.k, y:((ev.clientY - r.top) * sy + VB.y - T.y) / T.k}; };
   let drag = null, pan = null;
   svg.querySelectorAll(".gnode").forEach(g => g.addEventListener("mousedown", ev => { ev.stopPropagation(); const p = pos[g.dataset.id], q = pt(ev); drag = {g, p, dx:q.x - p.x, dy:q.y - p.y}; }));
   svg.addEventListener("mousedown", ev => { pan = {x:ev.clientX, y:ev.clientY, tx:T.x, ty:T.y}; });
   const mm = ev => { if (!document.body.contains(svg)) return window.removeEventListener("mousemove", mm);
     if (drag) { const q = pt(ev); drag.p.x = q.x - drag.dx; drag.p.y = q.y - drag.dy; drag.g.setAttribute("transform", `translate(${drag.p.x},${drag.p.y})`); upd(); }
-    else if (pan) { const r = svg.getBoundingClientRect(); T.x = pan.tx + (ev.clientX - pan.x) * W / r.width; T.y = pan.ty + (ev.clientY - pan.y) * H / r.height; apply(); } };
+    else if (pan) { const r = svg.getBoundingClientRect(); T.x = pan.tx + (ev.clientX - pan.x) * VB.w / r.width; T.y = pan.ty + (ev.clientY - pan.y) * VB.h / r.height; apply(); } };
   window.addEventListener("mousemove", mm); window.addEventListener("mouseup", () => { drag = null; pan = null; });
-  const zoom = f => { T.x = W / 2 - (W / 2 - T.x) * f; T.y = H / 2 - (H / 2 - T.y) * f; T.k *= f; apply(); };
+  const zoom = f => { const cx = VB.x + VB.w / 2, cy = VB.y + VB.h / 2; T.x = cx - (cx - T.x) * f; T.y = cy - (cy - T.y) * f; T.k *= f; apply(); };
   svg.addEventListener("wheel", ev => { ev.preventDefault(); zoom(ev.deltaY < 0 ? 1.1 : 1 / 1.1); }, {passive:false});
-  $("#zi").onclick = () => zoom(1.2); $("#zo").onclick = () => zoom(1 / 1.2); $("#zr").onclick = () => { T = {x:0, y:0, k:1}; apply(); };
+  $("#zi").onclick = () => zoom(1.2); $("#zo").onclick = () => zoom(1 / 1.2); $("#zr").onclick = () => { Object.values(pos).forEach(p => { p.x = p.x0; p.y = p.y0; });
+    $$("#gsvg .gnode").forEach(g => { const p = pos[g.dataset.id]; g.setAttribute("transform", `translate(${p.x},${p.y})`); }); upd(); fit(); };
+  Object.values(pos).forEach(p => { p.x0 = p.x; p.y0 = p.y; });
 }
 function timeline(inc) {
   const ev = inc.events; if (!ev.length) { $("#tl").innerHTML = ""; return; }
-  const lanes = ["windows", "linux", "aws", "host", "cloud"].filter(l => ev.some(e => e.s === l)), W = 1200, L = 130, R = 30, top = 14, lh = 58, H = top + lanes.length * lh + 34;
-  const t0 = Math.min(...ev.map(e => e.e)), t1 = Math.max(...ev.map(e => e.e)), sp = Math.max(t1 - t0, 1), X = t => L + (t - t0) / sp * (W - L - R);
+  /* posture records (cloud account-state snapshot, e.g. 12:00) are not attack activity: they get their own strip below the axis and never stretch the time axis */
+  const snap = ev.filter(e => e.s === "cloud"), act = ev.filter(e => e.s !== "cloud"), axisEv = act.length ? act : ev;
+  const core = axisEv.filter(e => e.f.length), ref = core.length ? core : axisEv;      /* zoom window = flagged events of the attack */
+  const a = Math.min(...ref.map(e => e.e)), b = Math.max(...ref.map(e => e.e));
+  let t0, t1; if (b - a < 60) { const m = (a + b) / 2; t0 = m - 30; t1 = m + 30; } else { const p = (b - a) * 0.05; t0 = a - p; t1 = b + p; }
+  const sp = t1 - t0, inWin = e => e.e >= t0 && e.e <= t1, outside = axisEv.filter(e => !inWin(e));
+  const lanes = ["windows", "linux", "aws", "host", "cloud"].filter(l => axisEv.some(e => e.s === l));
+  const W = 1000, L = 150, R = 26, top = 14, lh = 60, axisY = top + lanes.length * lh, snapH = snap.length && act.length ? 78 : 0, H = axisY + 40 + snapH;
+  const X = t => L + (Math.min(Math.max(t, t0), t1) - t0) / sp * (W - L - R);
+  const hm = t => new Date(t * 1000).toISOString().slice(11, sp > 900 ? 16 : 19) + "Z", day = new Date(t0 * 1000).toISOString().slice(0, 10);
+  const tipOf = e => `<span class=mono>${esc(e.t)}</span><br><b>${esc(PN[e.s] || e.s)} · ${esc(e.ty)}</b><br>user ${esc(e.u || "–")} · IP ${esc(e.ip || "–")} · ${esc(e.h)}<br>${esc(e.tg)}${e.f.length ? "<br>⚑ " + esc(e.f.join(", ")) : ""}`;
   let s = `<svg viewBox="0 0 ${W} ${H}" width="100%">`;
-  lanes.forEach((l, i) => { const y = top + i * lh; s += `<rect x="${L - 6}" y="${y}" width="${W - L - R + 12}" height="${lh - 12}" rx="9" fill="color-mix(in srgb,${PC[l]} 7%,transparent)" stroke="color-mix(in srgb,${PC[l]} 30%,transparent)"/>
-    <text x="${L - 16}" y="${y + lh / 2 - 2}" text-anchor="end" font-size="12.5" font-weight="700" fill="${PC[l]}">${esc(PN[l])}</text>`; });
-  for (let k = 0; k <= 6; k++) { const t = t0 + sp * k / 6, x = X(t); s += `<line x1="${x}" x2="${x}" y1="${top}" y2="${top + lanes.length * lh - 10}" stroke="var(--line)" stroke-dasharray="3 4"/><text x="${x}" y="${H - 10}" text-anchor="middle" font-size="11" fill="var(--mu)" font-family="Consolas,monospace">${new Date(t * 1000).toISOString().slice(11, 19)}Z</text>`; }
-  ev.forEach((e, j) => { const i = lanes.indexOf(e.s), y = top + i * lh + (lh - 12) / 2 + ((j % 5) - 2) * 4, r = e.f.length ? 6.5 : 4, col = e.f.length ? SVC[e.sv] : "var(--mu2)";
-    s += `<circle cx="${X(e.e)}" cy="${y}" r="${r}" fill="${col}" stroke="var(--bg2)" stroke-width="1.5" style="filter:drop-shadow(0 0 4px ${col})" data-tip="<span class=mono>${esc(e.t)}</span><br><b>${esc(PN[e.s] || e.s)} · ${esc(e.ty)}</b><br>user ${esc(e.u || "–")} · IP ${esc(e.ip || "–")} · ${esc(e.h)}<br>${esc(e.tg)}${e.f.length ? "<br>⚑ " + esc(e.f.join(", ")) : ""}"/>`; });
-  s += `</svg><div class="legend"><span><i style="background:var(--rd)"></i>high-severity alert</span><span><i style="background:var(--am)"></i>medium-severity alert</span><span><i style="background:var(--mu2)"></i>related event (not alerted)</span></div>`;
+  lanes.forEach((l, i) => { const y = top + i * lh; s += `<rect x="${L - 6}" y="${y}" width="${W - L - R + 12}" height="${lh - 12}" rx="9" fill="color-mix(in srgb,${PC[l]} 7%,transparent)" stroke="color-mix(in srgb,${PC[l]} 32%,transparent)"/>
+    <text x="${L - 16}" y="${y + lh / 2 - 1}" text-anchor="end" font-size="14" font-weight="700" fill="${PC[l]}">${esc(PN[l])}</text>`; });
+  for (let k = 0; k <= 6; k++) { const t = t0 + sp * k / 6, x = X(t); s += `<line x1="${x}" x2="${x}" y1="${top}" y2="${axisY - 10}" stroke="var(--line2)" stroke-dasharray="3 4"/><text x="${x}" y="${axisY + 18}" text-anchor="${k === 0 ? "start" : k === 6 ? "end" : "middle"}" font-size="13" fill="var(--mu)" font-family="Consolas,monospace">${hm(t)}</text>`; }
+  s += `<text x="${L - 16}" y="${axisY + 18}" text-anchor="end" font-size="12" fill="var(--mu)">${day} UTC</text>`;
+  axisEv.forEach((e, j) => { const i = lanes.indexOf(e.s), y = top + i * lh + (lh - 12) / 2 + ((j % 5) - 2) * 4.5, r = e.f.length ? 7 : 5, col = e.f.length ? SVC[e.sv] : "var(--mu2)", out = !inWin(e);
+    s += `<circle cx="${X(e.e)}" cy="${y}" r="${r}" fill="${out ? "var(--bg2)" : col}" stroke="${out ? col : "var(--bg2)"}" stroke-width="${out ? 2 : 1.5}" data-tip="${esc(tipOf(e))}"/>`; });
+  if (snapH) { const y = axisY + 36, n = snap.length, st = Math.min(20, (W - L - R - 40) / Math.max(n, 1)), tt = (snap[0].t || "").slice(11, 19);
+    s += `<rect x="${L - 6}" y="${y}" width="${W - L - R + 12}" height="44" rx="9" fill="color-mix(in srgb,var(--cloud) 7%,transparent)" stroke="color-mix(in srgb,var(--cloud) 40%,transparent)" stroke-dasharray="5 4"/>
+    <text x="${L - 16}" y="${y + 19}" text-anchor="end" font-size="14" font-weight="700" fill="var(--cloud)">${esc(PN.cloud)}</text><text x="${L - 16}" y="${y + 36}" text-anchor="end" font-size="11.5" fill="var(--mu)">snapshot · not on time axis</text>`;
+    snap.forEach((e, i) => { const col = e.f.length ? SVC[e.sv] : "var(--mu2)"; s += `<circle cx="${L + 18 + i * st}" cy="${y + 22}" r="${e.f.length ? 6.5 : 4.5}" fill="${col}" stroke="var(--bg2)" stroke-width="1.5" data-tip="${esc(tipOf(e))}"/>`; });
+    s += `<text x="${W - R - 4}" y="${y + 27}" text-anchor="end" font-size="12.5" fill="var(--mu)">${n} record${n === 1 ? "" : "s"} collected ${esc(tt)}Z</text>`; }
+  s += `</svg><div class="legend"><span><i style="background:var(--rd)"></i>high-severity alert</span><span><i style="background:var(--am)"></i>medium-severity alert</span><span><i style="background:var(--mu2)"></i>related event (not alerted)</span>
+  <span>zoomed to the attack window ${hm(a)}–${hm(b)}</span>${outside.length ? `<span>◯ ${outside.length} related event(s) outside the window, shown at the edge</span>` : ""}${snapH ? "<span>account-state snapshot shown separately</span>" : ""}</div>`;
   $("#tl").innerHTML = s;
 }
 
@@ -547,7 +610,7 @@ function tCloud(v) {
   if (!ready()) { needRun(v, "cloud findings"); return; }
   const R = S.res, has = R.run.stats.cloud;
   v.innerHTML += staleBox();
-  if (!has) { v.innerHTML += `<div class="card empty">${ic("cld", 40)}<div class="big">No AWS account state in this case</div><div class="note">Collect it with the AWS collector (read-only keys) or add scenario S1_cloud.</div>
+  if (!has) { v.innerHTML += `<div class="card empty">${ic("cld", 40)}<div class="big">No AWS account state in this case</div><div class="note">${awsOn() ? "Collect it with the AWS collector (read-only keys) or add scenario S1_cloud." : "AWS collection is off on this hosted demo: run CP-DFIR locally to collect from your own account, or add scenario S1_cloud."}</div>
     <div class="acts" style="justify-content:center;margin-top:16px"><a class="btn pri" href="#/c/${S.cid}/evidence">${ic("cld", 15)} Go to collectors</a></div></div>`; wire(v); return; }
   const P = R.posture, hi = P.filter(p => p.sv === "high").length;
   v.innerHTML += `<div class="g g4" style="margin-bottom:16px">${kpi(P.length, "Posture findings", "misconfigurations", P.length ? "var(--am)" : "var(--gr)", "alert")}${kpi(hi, "High severity", "e.g. admin without MFA, public bucket", hi ? "var(--rd)" : "var(--gr)", "bolt")}
@@ -591,7 +654,9 @@ function tCustody(v) {
     ready() ? `<button class="btn pri" id="vb">${ic("cus", 15)} Verify now</button>` : "");
   if (!ready()) { needRun(v, "the custody ledger"); return; }
   const R = S.res, V = S.verify, bad = new Set((V && !V.ok ? V.failed : []).map(c => (c.item.match(/^entry (\d+)/) || [])[1]).filter(Boolean).map(Number));
-  v.innerHTML += `<div id="vres">${V ? verifyBox(V) : `<div class="info cy" style="margin-bottom:16px"><b>Not verified in this session.</b> Press <b>Verify now</b>: every ledger entry, every HMAC, the anchor hash and the current SHA-256 of every recorded file are checked again.</div>`}</div>
+  v.innerHTML += `<div class="info" style="margin-bottom:16px"><b>Anchor location.</b> On the hosted demo the anchor is stored on the same server. For real evidence, run CP-DFIR locally.</div>
+  <div class="card" id="mk" style="margin-bottom:16px"><h3><i>${ic("tgt", 15)}</i>Merkle root of findings<span class="r"><a class="btn sm" href="#/verify-proof">${ic("chk", 13)} Verify a proof</a></span></h3><div class="note"><span class="spin"></span> loading ...</div></div>
+  <div id="vres">${V ? verifyBox(V) : `<div class="info cy" style="margin-bottom:16px"><b>Not verified in this session.</b> Press <b>Verify now</b>: every ledger entry, every HMAC, the anchor hash and the current SHA-256 of every recorded file are checked again.</div>`}</div>
   <div class="g g2" style="margin-bottom:16px"><div class="card"><h3><i>${ic("key", 15)}</i>Anchor hash (kept outside the case folder)</h3><div class="mono" style="word-break:break-all;font-size:12.5px;color:var(--gr)">${esc(R.anchor || "–")}</div>
   <div class="note" style="margin-top:8px">Stored in the console's <span class="mono">webapp_data/anchors.json</span>, not inside the case. Deleting the last ledger entries or rewriting the chain is detected by comparing against it. Note it in your case notes too.</div>
   <div class="tw" style="margin-top:10px;max-height:150px"><table><thead><tr><th>Analysis run</th><th>By</th><th>Anchor</th></tr></thead><tbody>${(S.case.anchors || []).slice().reverse().map(a => `<tr><td class="mono">${utc(a.time)}</td><td>${esc(a.by)}</td><td class="mono">${esc(a.head.slice(0, 20))}…</td></tr>`).join("")}</tbody></table></div></div>
@@ -604,9 +669,19 @@ function tCustody(v) {
   <div class="hs">prev&nbsp; ${esc((b.prev || "").slice(0, 10))}…<br>hash&nbsp; <em>${esc((b.hash || "").slice(0, 10))}…</em>${b.hmac ? "<br>hmac&nbsp; ✓ signed" : ""}</div></div>`).join("")}</div>
   <div class="tw max" style="margin-top:12px"><table><thead><tr><th>#</th><th>Stage</th><th>Action</th><th>Target</th><th>Time (UTC)</th><th>Actor</th><th>File SHA-256</th></tr></thead><tbody>
   ${R.ledger.map(b => `<tr><td class="mono">${b.seq}</td><td>${esc(b.stage)}</td><td>${esc(b.action)}</td><td class="mono">${esc(b.target)}</td><td class="mono">${utc(b.time)}</td><td>${esc(b.actor)}</td><td class="mono">${esc((b.sha || "").slice(0, 24))}${b.sha ? "…" : ""}</td></tr>`).join("")}</tbody></table></div></div>`;
-  $("#vb").onclick = verify; wire(v);
+  $("#vb").onclick = verify; wire(v); loadMerkle();
   v.querySelectorAll("[data-t]").forEach(b => b.onclick = () => tamper(b.dataset.t));
   tamperStatus();
+}
+async function loadMerkle() {
+  const el = $("#mk"); if (!el) return; const cid = S.cid, ttl = el.querySelector("h3").outerHTML;
+  try { const m = await api("GET", `/api/cases/${cid}/merkle`); if (!$("#mk") || S.cid !== cid) return;
+    el.innerHTML = ttl + `<div class="kv"><div>Merkle root</div><div class="mono" style="word-break:break-all;color:var(--gr)">${esc(m.root || "–")} ${m.root ? `<button class="btn sm ghost" data-copy="${esc(m.root)}" title="copy">${ic("copy", 12)}</button>` : ""}</div>
+    <div>Findings (leaves)</div><div class="mono">${esc(m.leaf_count ?? "–")}</div><div>Ledger entry</div><div class="mono">#${esc(m.ledger_seq ?? "–")}</div>
+    <div>Root matches ledger</div><div>${m.verified === true ? `<span class="pill ok">${ic("chk", 12)} verified</span>` : m.verified === false ? `<span class="pill bad">${ic("x", 12)} NOT verified</span>` : "–"}</div></div>
+    <div class="note" style="margin-top:10px">Each finding's proof (Download proof, on alert rows and in the event window) lets anyone re-compute this root without seeing the other findings.</div>`;
+    el.querySelectorAll("[data-copy]").forEach(b => b.onclick = () => { navigator.clipboard && navigator.clipboard.writeText(b.dataset.copy); toast("Merkle root copied"); });
+  } catch (e) { const x = $("#mk"); if (x) x.innerHTML = ttl + `<div class="note">Merkle summary not available for this case (${esc(e.message)}).</div>`; }
 }
 function verifyBox(V) {
   return `<div class="bigres ${V.ok ? "ok" : "bad"}"><div class="ic">${ic(V.ok ? "cus" : "alert", 28)}</div><div><div class="x">${V.ok ? "VERIFIED — evidence and ledger intact" : "TAMPERING DETECTED"}</div>
@@ -658,6 +733,39 @@ function actDetail(x) {
   const d = x.details || {};
   if (d.files) return d.files.map(f => `${f.ok ? "+" : "-"} ${f.name}${f.kind ? " [" + f.kind + "]" : ""}${f.sha256 ? " " + f.sha256.slice(0, 16) + "…" : ""}${f.note ? " (" + f.note + ")" : ""}`).join("\n");
   return Object.entries(d).filter(([, v]) => v != null && v !== "" && !(Array.isArray(v) && !v.length)).map(([k, v]) => `${k}: ${typeof v === "object" ? JSON.stringify(v) : v}`).join("  ·  ");
+}
+
+/* ---------------------------------------------------------------- verify proof */
+function viewVerifyProof(v) {
+  v.innerHTML = head("Evidence integrity", "Verify proof", "Paste a proof JSON downloaded from a finding, or upload the file. The console recomputes the Merkle path up to the root and checks that root against the custody ledger. The proof reveals only the finding itself, not the other findings.") +
+  `<div class="g g32"><div class="card"><h3><i>${ic("lock", 15)}</i>Proof JSON</h3>
+  <div class="fr"><textarea class="in" id="pj" spellcheck="false" style="min-height:280px" placeholder='{"version":1,"case_id":"CASE-...","event_id":"...","leaf_hash":"...","path":[...],"root":"...","ledger_seq":...}'></textarea></div>
+  <div class="row" style="align-items:flex-end"><div><label class="f">or upload a proof file (.json)</label><input class="in" type="file" id="pf" accept=".json,application/json"></div>
+  <div><label class="f">Case ID (optional)</label><input class="in" id="pc" placeholder="taken from the proof if empty" autocomplete="off"></div></div>
+  <div class="err" id="perr" style="margin-top:10px"></div><div class="acts"><button class="btn pri" id="pgo">${ic("chk", 15)} Verify proof</button><button class="btn" id="pclr">Clear</button></div></div>
+  <div><div id="pres"><div class="card empty">${ic("cus", 40)}<div class="big">Result appears here</div><div class="note">VALID or INVALID, with the reason.</div></div></div>
+  <div class="card" style="margin-top:16px"><h3><i>${ic("exp", 15)}</i>What is checked</h3><div class="note">1. The leaf hash is re-computed from the finding in the proof.<br>2. The path of sibling hashes is folded up to a root.<br>3. That root must equal the Merkle root stored in the custody ledger entry named in the proof.</div></div></div></div>`;
+  const pj = $("#pj");
+  $("#pf").onchange = async e => { const f = e.target.files[0]; if (!f) return; if (f.size > 2e6) { $("#perr").textContent = "file too large for a proof (max 2 MB)"; return; }
+    try { pj.value = await f.text(); $("#perr").textContent = ""; } catch (er) { $("#perr").textContent = "could not read the file"; } };
+  $("#pclr").onclick = () => { pj.value = ""; $("#pf").value = ""; $("#pc").value = ""; $("#perr").textContent = ""; };
+  $("#pgo").onclick = async () => {
+    const er = $("#perr"); er.textContent = ""; let proof;
+    if (!pj.value.trim()) { er.textContent = "paste the proof JSON or choose a file first"; return; }
+    try { proof = JSON.parse(pj.value); } catch (x) { er.textContent = "this is not valid JSON: " + x.message; return; }
+    if (!proof || typeof proof !== "object" || Array.isArray(proof)) { er.textContent = "a proof must be a JSON object"; return; }
+    const body = {proof}, cid = $("#pc").value.trim(); if (cid) body.case_id = cid;
+    const b = $("#pgo"); b.disabled = true; b.innerHTML = `<span class="spin"></span> Verifying ...`;
+    try { const d = await api("POST", "/api/verify-proof", body); $("#pres").innerHTML = proofResult(d, proof); }
+    catch (x) { $("#pres").innerHTML = `<div class="info rd"><b>Could not verify.</b> ${esc(x.message)}</div>`; }
+    b.disabled = false; b.innerHTML = `${ic("chk", 15)} Verify proof`; };
+}
+function proofResult(d, p) {
+  const ok = d.valid === true, row = (l, x) => `<div class="vr"><span class="${x === true ? "ok" : x === false ? "bad" : ""}">${x == null ? "–" : ic(x ? "chk" : "x", 14)}</span>${l}<span class="mono" style="margin-left:auto">${x == null ? "not reported" : x ? "yes" : "NO"}</span></div>`;
+  return `<div class="bigres ${ok ? "ok" : "bad"}"><div class="ic">${ic(ok ? "cus" : "alert", 28)}</div><div><div class="x">${ok ? "VALID" : "INVALID"}</div><div class="y">${esc(d.reason || (ok ? "the proof checks out" : "the proof does not check out"))}</div></div></div>
+  <div class="card"><h3><i>${ic("chk", 15)}</i>Checks</h3>${row("Leaf matches the finding", d.leaf_matches_finding)}${row("Root matches the custody ledger", d.root_matches_ledger)}
+  <div class="kv" style="margin-top:12px"><div>Case</div><div class="mono">${esc(p.case_id || "–")}</div><div>Event</div><div class="mono" style="word-break:break-all">${esc(p.event_id || "–")}</div>
+  <div>Position</div><div class="mono">${p.index != null ? esc(p.index) + " of " + esc(p.leaf_count) : "–"}</div><div>Root</div><div class="mono" style="word-break:break-all">${esc(p.root || "–")}</div><div>Ledger entry</div><div class="mono">${p.ledger_seq != null ? "#" + esc(p.ledger_seq) : "–"}</div></div></div>`;
 }
 
 /* ---------------------------------------------------------------- framework pages */
