@@ -236,6 +236,16 @@ def collect_data(root=ROOT):
                            "agree": r["bf_ips_agree"], "fail": r["framework_auth_failure"], "top": r["top_attackers"][:5]} for f, r in rd["linux"].items()],
                 "aws": [{"file": a["file"], "why": a["why"], "hit": a["hit"]} for a in rd["aws"]]}
 
+    # held-out result of the frozen rule set (Figure 6)
+    hp = os.path.join(res, "heldout_frozen_v1.1.json")
+    ho = _load(hp) if os.path.exists(hp) else None
+    heldout = None
+    if ho:
+        heldout = {"fp": ho["rules_fingerprint"], "dataset": ho["dataset"], "n": ho["in_scope"], "alert": ho["in_alerted"],
+                   "parent": ho["in_parent"], "exact": ho["in_exact"],
+                   "corpora": [{"name": k, "n": v["in_scope"], "alert": v["in_alerted"], "parent": v["in_parent"]}
+                               for k, v in ho["per_corpus"].items() if v["in_scope"]]}
+
     big = data["scalability"][-1]
     s5 = sc.get("S5", {}).get("score", {})
     D = {
@@ -251,7 +261,7 @@ def collect_data(root=ROOT):
         "ledger": ledger, "ledger_ok": ledger_ok, "ledger_checks": ledger_checks,
         "cases": cases, "explorer": explorer, "families": _families(), "techs": list(techs.values()), "tactics": TACTICS,
         "cloud": cloud, "s1cloud": ({"f1": s1c["score"]["f1"], "found": s1c["score"]["incidents_found"]} if s1c else None),
-        "scale": data["scalability"], "real": real,
+        "scale": data["scalability"], "real": real, "heldout": heldout,
     }
     return D
 
@@ -745,8 +755,26 @@ function sReal(){
  <div class="card"><h3><i>${ic("tgt",15)}</i>Labelled Windows samples</h3><div class="scroll" style="max-height:330px;border:0">${w.labelled.map(x=>`<div style="display:flex;gap:10px;padding:8px 2px;border-bottom:1px solid var(--line)"><span class="${x.hit?'ok':x.hard?'warn':'bad'}">${ic(x.hit?'chk':x.hard?'alert':'x',16)}</span><div style="min-width:0"><div class="mono" style="font-size:11.5px;word-break:break-all">${esc(x.file.split("/").pop())}${x.hard?' <span class="tag sev-medium">HARD</span>':''}</div><div class="note">${esc(x.why)}</div></div></div>`).join("")}</div></div></div>`;
  h+=`<div class="card" style="margin-top:16px"><h3><i>${ic("col",15)}</i>Linux brute-force (LogHub)</h3><table><tr><th>Log</th><th>Lines</th><th>Normalized</th><th>Failed logins</th><th>Brute-force IPs (framework / independent)</th><th>Top attacking sources</th></tr>
  ${R.linux.map(l=>`<tr><td class="mono">${esc(l.file)}</td><td class="mono">${fmt(l.lines)}</td><td class="mono">${l.norm}</td><td class="mono">${l.fail}</td><td class="mono ${l.agree?'ok':'bad'}">${l.fw} / ${l.ind} ${l.agree?'✓':''}</td><td class="mono" style="font-size:11px">${l.top.map(t=>esc(t[0])+' ('+t[1]+')').join(", ")}</td></tr>`).join("")}</table></div>`;
+ if(D.heldout)h+=`<div class="card" style="margin-top:16px"><h3><i>${ic("tgt",15)}</i>Figure 6 · Detection on development samples vs held-out samples</h3>${heldChart(D.heldout,w)}</div>`;
  return h;
 }
+function heldChart(H,w){
+ const rows=[{n:"Development: labelled samples",s:"EVTX-ATTACK-SAMPLES, rules were tuned on these",t:w.core[1],ok:w.core[0],dev:1},
+  {n:"Development: hard / unsupported",s:"deliberately hard cases",t:w.hard[1],ok:w.hard[0],dev:1},
+  {n:"Held-out: all in-scope samples",s:"frozen rules "+H.fp,t:H.n,al:H.alert,ok:H.parent}]
+  .concat(H.corpora.map(c=>({n:"Held-out: "+c.name,s:"",t:c.n,al:c.alert,ok:c.parent})));
+ const W=720,L=235,R=70,rh=58,T=8,B=34,Hh=T+rows.length*rh+B,X=v=>L+v/100*(W-L-R),pc=(k,t)=>t?100*k/t:0;
+ let s=`<svg viewBox="0 0 ${W} ${Hh}" width="100%" role="img" aria-label="Detection rate on development and held-out samples">`;
+ for(let g=0;g<=100;g+=25)s+=`<line x1="${X(g)}" x2="${X(g)}" y1="${T}" y2="${Hh-B}" stroke="var(--line)"/><text x="${X(g)}" y="${Hh-B+16}" text-anchor="middle" font-size="11" fill="var(--mu)">${g}%</text>`;
+ rows.forEach((r,i)=>{const y=T+i*rh;
+  s+=`<text x="${L-10}" y="${y+22}" text-anchor="end" font-size="12" fill="var(--tx)">${esc(r.n)}</text>`;
+  if(r.s)s+=`<text x="${L-10}" y="${y+37}" text-anchor="end" font-size="10" fill="var(--mu)">${esc(r.s)}</text>`;
+  const bar=(yy,k,col,lab)=>`<rect x="${L}" y="${yy}" width="${Math.max(0,X(pc(k,r.t))-L)}" height="14" rx="3" fill="${col}" data-tip="<b>${esc(r.n)}</b><br>${lab}: ${k} of ${r.t} (${pc(k,r.t).toFixed(1)}%)"/><text x="${X(pc(k,r.t))+6}" y="${yy+11.5}" font-size="11" class="mono" fill="var(--mu)">${k}/${r.t}</text>`;
+  if(!r.dev)s+=bar(y+8,r.al,"var(--cy)","alert raised");
+  s+=bar(y+(r.dev?15:26),r.ok,"var(--gr)",r.dev?"matching alert raised":"alert for the labelled technique (or its parent)")});
+ s+=`</svg><div class="legend"><span><i style="background:var(--cy)"></i>any alert raised</span><span><i style="background:var(--gr)"></i>correct technique (held-out: labelled technique or its parent; development: matching alert)</span></div>
+ <div class="note" style="margin-top:8px">Held-out = ${H.n} in-scope samples from ${esc(H.dataset)}, not used while the rules were written; rules frozen at v1.1 (fingerprint ${H.fp}). In-scope means a CP-DFIR rule exists for the labelled technique. Development bars are optimistic because the rules were refined on those samples. Samples from the same technique folder are not independent.</div>`;
+ return s}
 function tacChart(tac){
  const W=600,rh=30,L=150,H=tac.length*rh+30,mx=Math.max(...tac.map(t=>t[1].samples));
  let s=`<svg viewBox="0 0 ${W} ${H}" width="100%">`;

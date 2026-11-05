@@ -5,7 +5,8 @@ Design parameter            How it is measured here
 Evidence completeness       normalized supported records / supported records present in the source
 Correlation accuracy        event-level precision / recall / F1 against generator ground truth,
                             plus incident-level errors (missed, false, split, merged)
-Evidence integrity          4 tampering attacks on the ledger/evidence + 1 untouched control
+Evidence integrity          6 tampering attacks on the ledger/evidence (bit flip, edit, delete, truncate, reorder,
+                            forged chain) + 1 untouched control + 1 documented limitation (forgery checked without key)
 Scalability                 processing time and throughput for 1K ... 100K records
 Cross-platform support      sources processed with no manual step, and chain coverage of unified
                             vs siloed (one source at a time) analysis
@@ -161,6 +162,12 @@ def tamper_tests(case_dir, anchor, key=EVAL_KEY):
     open(lp, "w", encoding="utf-8").write("\n".join(lines[:-1]) + "\n")
     ok, _ = CustodyLedger(lp).verify(anchor, key)
     results.append(dict(test="Ledger truncated (last entry removed, anchor noted)", expect_detect=True, detected=not ok, passed=not ok))
+    fresh()                                           # reorder: swap two adjacent ledger entries (content untouched, order changed)
+    lines = open(lp, encoding="utf-8").read().splitlines()
+    lines[1], lines[2] = lines[2], lines[1]
+    open(lp, "w", encoding="utf-8").write("\n".join(lines) + "\n")
+    ok, _ = CustodyLedger(lp).verify(anchor, key)
+    results.append(dict(test="Ledger entries reordered (entries 2 and 3 swapped)", expect_detect=True, detected=not ok, passed=not ok))
     fresh()
     _forge_chain(lp)
     ok, _ = CustodyLedger(lp).verify(None, key)

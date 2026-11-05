@@ -13,6 +13,7 @@ Design
   * secrets are NOT mirrored: the custody HMAC key and the session key must come from environment variables
     (DFIR_CUSTODY_KEY, DFIR_SESSION_KEY) on such a host, so the database alone can never forge a ledger
 """
+import contextlib
 import hashlib
 import os
 import threading
@@ -28,6 +29,7 @@ class Mirror:
         self.psycopg = psycopg
         self.url, self.root, self.log = url, root, log
         self.state = {}                                  # rel path -> (size, mtime_ns)
+        self.holds = 0                                   # > 0: syncing is paused (see hold())
         self.lock = threading.Lock()
         self.dirty = threading.Event()
         self.last_error = None
@@ -78,8 +80,26 @@ class Mirror:
         self.log(f"  Storage  restored {n} file(s) from the database" + (f"; {len(bad)} failed their SHA-256 check: {bad[:5]}" if bad else ""))
         return n, bad
 
+    @contextlib.contextmanager
+    def hold(self):
+        """Pause syncing while derived files of a case are rebuilt (e.g. a demo case analysed again after a rule-set change).
+
+        The table keeps the previous complete copy meanwhile, so a restart in the middle of the rebuild restores the old,
+        consistent case instead of a half-written one. On exit one normal sync pushes the finished result (new files first,
+        then the deletions of files that no longer exist)."""
+        with self.lock:                                  # waits for a sync that is running right now
+            self.holds += 1
+        try:
+            yield
+        finally:
+            with self.lock:
+                self.holds -= 1
+            self.request_sync()
+
     def sync(self):
         with self.lock:
+            if self.holds:
+                return 0                                 # paused: the changes stay marked as unsynced (state is not updated)
             now = self._walk()
             changed = [k for k, v in now.items() if self.state.get(k) != v]
             gone = [k for k in self.state if k not in now]

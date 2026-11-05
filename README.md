@@ -1,289 +1,416 @@
-# CP-DFIR — Cross-Platform DFIR Framework
+# CP-DFIR: Cross-Platform DFIR Framework
+
+[![tests](https://github.com/jayveerv/DFIR-Framework-WebApp/actions/workflows/tests.yml/badge.svg)](https://github.com/jayveerv/DFIR-Framework-WebApp/actions/workflows/tests.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![DOI](https://img.shields.io/badge/DOI-pending%20Zenodo%20release-lightgrey.svg)](#how-to-cite)
+![version](https://img.shields.io/badge/version-1.3-blue.svg)
 
 **A Scalable Cross-Platform DFIR Framework for Automated Evidence Collection, Correlation, and Cloud Forensic Investigation**
-Author: Jayveer Vasava
 
-Windows, Linux aur AWS ke logs se evidence collect karta hai, ek common format me laata hai, alag-alag platforms ke events ko ek attack
-timeline me jodta hai, aur har step ka hash-based chain of custody rakhta hai. Framework ek **analyst console** ke through chalta hai
-(browser me khulta hai, jaise Velociraptor / Timesketch), aur CLI (`main.py`) se bhi.
+Author: Jayveer Vasava (M.Tech Cyber Security, Parul University)
 
-## 🔗 Live: https://cp-dfir-console.onrender.com/
+CP-DFIR collects evidence from Windows, Linux and AWS, converts it to one common schema, correlates events from the different
+platforms into a single attack timeline mapped to MITRE ATT&CK, and records every step in a tamper-evident chain of custody.
+It runs as an analyst console in the browser (similar in spirit to Velociraptor or Timesketch) and from the command line (`main.py`).
 
-Ek hi link me poora framework chalta hai: **Try demo** (bina password) → read-only demo case dekho, ya **apna case banao** →
-evidence upload karo (ya collector ka zip) → Analyse → investigation graph, timeline, MITRE, cloud posture, chain of custody
-(verify + tamper check), professional report (dark/light, Print/PDF), pseudonymised export, aur **Framework evaluation** ke 7 pages.
+**Live demo:** <https://cp-dfir-console.onrender.com/>
 
-Hosted instance ke rules (privacy): har visitor ko sirf apne cases dikhte hain; visitor cases 24 h baad apne aap delete;
-asli evidence ke liye CP-DFIR apne computer par chalao (data bahar nahi jaata). Laptop ka evidence = **collector download karo**
-(Evidence page) → zip upload karo → console har file ka SHA-256 dobara check karta hai.
+Click **Try demo** (no password) to open a read-only demo case, or create your own case, upload evidence (or a collector zip) and
+press Analyse. You get the investigation graph, timeline, MITRE ATT&CK matrix, cloud posture, chain of custody (verify and tamper
+check), a printable report (dark or light), a pseudonymised export, and seven framework-evaluation pages.
 
-## v1.3 me naya
+The hosted instance is free-tier, so the first visit can take up to a minute to wake up. Privacy rules on the hosted instance: each
+visitor sees only their own cases, visitor cases are deleted after 24 hours, and the shared demo case is read-only. For real
+evidence, run CP-DFIR on your own computer so the data never leaves it.
 
-| Feature | Kya karta hai | File |
-|---|---|---|
-| Windows account manipulation | 4728/4756 (privileged group), 4738/4742 (UAC: no pre-auth, no password, reversible, DES, delegation; SPN), 4781 (rename), 5136 (SPN / delegation / UAC), 4723/4724 (password reset) → 4 naye T1098 rules | `normalize.py`, `correlate.py` |
-| Defence tampering | Defender 5001/5007/5010/5012, `Set-MpPreference` / `Add-MpPreference` exclusions, `sc config WinDefend`, Sysmon driver unload, PowerShell 4103/800 → `defender_tampering` (T1562.001) | `normalize.py`, `correlate.py` |
-| Kerberos brute force | 4768/4771 failures ab authentication failures hain (brute-force rule unhe bhi ginta hai) | `normalize.py` |
-| Service baseline | System32 / Program Files ke drivers aur services alert nahi karte; cmd / PowerShell / `%COMSPEC%` wali ya baahar ki services karte hain | `correlate.py` |
-| Live progress | Analysis job me stage, progress bar aur elapsed time; 20 MB se bade case par warning | `pipeline.py`, `webapp/` |
-
-Held-out note: v1.1 ka frozen result (30.8% alerted) hi asli held-out number hai; v1.3 ke rules us collection ke gaps dekh kar likhe gaye, isliye
-unka re-run sirf post-hoc dikhaya jaata hai (`results/heldout_frozen_v1.1.json` vs `results/heldout_results.json`).
-
-## v1.1 me naya
-
-| Feature | Kya karta hai | File |
-|---|---|---|
-| Evidence collectors | Windows (PowerShell, kuch install nahi) aur Linux (Python 3 stdlib) collector: host state, processes, sockets, accounts, persistence, recent executables, security logs → ek zip + `cpdfir_manifest.json` (har file ka SHA-256) | `collectors/` |
-| Integrity since collection | Zip upload par har file ka hash manifest se milaya jaata hai; badli / gayab / extra file turant report | `webapp/app.py` |
-| Case privacy | Per-visitor cases, shared demo case read-only, guest cases ka auto-delete (retention), SSH sirf public hosts par | `webapp/app.py` |
-| Pseudonymised export | Usernames, IPs, hosts, emails, AWS account / key ids → keyed tokens (per-case secret); ledger kabhi nahi badalta | `anonymize.py` |
-| Professional report | Executive summary + suggested next steps, case details & scope, findings, integrity, method & limits, appendix; dark/light; A4 print with page numbers | `report.py` |
-| Durable storage | `DATABASE_URL` (PostgreSQL) set ho to data folder DB me mirror hota hai, restart par restore (SHA-256 check ke saath); keys sirf env vars me | `webapp/persist.py` |
-| Held-out validation | Frozen rules ko 320 naye real samples par ek baar chalaya (development set se alag) | `heldout.py` |
-
-**Deploy (Render.com, free):** *New → Blueprint* → is repo ko chuno → `DFIR_ADMIN_PASSWORD` aur `DATABASE_URL` (free Neon/Supabase
-Postgres) set karo. `DFIR_CUSTODY_KEY` / `DFIR_SESSION_KEY` Render khud generate karta hai.
+> **Status and honesty note.** The simulated-data results are weak evidence: the data and the rules were both written in this
+> project. The held-out result on unseen real samples is the honest baseline (see [Results on real public data](#4-results-on-real-public-data)
+> and [Limitations](#5-what-is-not-measured-limitations)).
 
 ---
 
-## ★ Web Application: CP-DFIR Investigation Console (NEW)
+## Contents
 
-Framework ab ek **working web application** ke roop me bhi chalta hai. Dashboard sirf dikhata tha; ye console **asli kaam karta hai**:
-evidence upload / collect karo → Analyse dabao → wahi framework (`pipeline.run_case`) chalta hai → results live dikhte hain.
+1. [What is new in v1.3](#what-is-new-in-v13)
+2. [Quick start](#quick-start)
+3. [Reproduce the paper](#reproduce-the-paper)
+4. [The web console](#the-web-console)
+5. [Framework layers](#2-framework-layers)
+6. [Results on simulated data](#3-results-on-simulated-data)
+7. [Live host evidence collection](#3b-live-host-evidence-collection-hostcollectpy)
+8. [Cloud account state](#3c-cloud-account-state-cloudstatepy)
+9. [Results on real public data](#4-results-on-real-public-data)
+10. [Limitations](#5-what-is-not-measured-limitations)
+11. [Analysing your own logs](#6-analysing-your-own-logs)
+12. [Future work](#7-future-work)
+13. [How to cite](#how-to-cite)
+14. [License](#license)
 
-**Chalana (Windows):** `run_webapp.bat` par double-click → browser me `http://127.0.0.1:5000` khulega.
-Pehli baar: apna analyst account banao (naam reports aur custody ledger me investigator ke roop me aata hai).
-Linux/macOS: `./run_webapp.sh` (ya `python webapp/app.py`).
+---
 
-| Page | Kya karta hai |
+## What is new in v1.3
+
+| Feature | What it does | File |
+|---|---|---|
+| Windows account manipulation | Events 4728/4756 (privileged group), 4738/4742 (UAC flags: no pre-auth, no password, reversible encryption, DES, delegation; SPN), 4781 (rename), 5136 (SPN / delegation / UAC), 4723/4724 (password reset) give 4 new T1098 rules | `normalize.py`, `correlate.py` |
+| Defence tampering | Defender events 5001/5007/5010/5012, `Set-MpPreference` / `Add-MpPreference` exclusions, `sc config WinDefend`, Sysmon driver unload, PowerShell 4103/800 give `defender_tampering` (T1562.001) | `normalize.py`, `correlate.py` |
+| Kerberos brute force | Events 4768/4771 failures now count as authentication failures, and the brute-force rule counts them | `normalize.py` |
+| Service baseline | Drivers and services under System32 or Program Files no longer alert; services launched through cmd, PowerShell, `%COMSPEC%` or from outside those folders still do | `correlate.py` |
+| Live progress | The analysis job shows stage, progress bar and elapsed time; a warning appears for cases larger than 20 MB | `pipeline.py`, `webapp/` |
+| Merkle per-finding proofs | Every analysis builds a SHA-256 Merkle tree of the findings (`merkle_tree.json`) and records its root in the HMAC-signed custody ledger. Each alert has **Download proof**; the **Verify proof** page (`#/verify-proof`) checks a proof offline or against a case's ledger. Tamper-evident, not tamper-proof (see Limitations) | `merkle.py`, `pipeline.py`, `custody.py`, `webapp/` |
+| Sixth tampering test | Reordered ledger entries are now part of the tampering evaluation (30 attempts: 6 attack types x 5 scenarios) | `evaluate.py` |
+
+**Held-out note.** The frozen v1.1 result (30.8% of in-scope samples alerted) is the real held-out number. The v1.3 rules were
+written after looking at the gaps in that collection, so their re-run is shown only as post-hoc
+(`results/heldout_frozen_v1.1.json` versus `results/heldout_results.json`).
+
+<details>
+<summary>What was new in v1.1</summary>
+
+| Feature | What it does | File |
+|---|---|---|
+| Evidence collectors | Windows (PowerShell, nothing to install) and Linux (Python 3 standard library) collectors gather host state, processes, sockets, accounts, persistence, recent executables and security logs into one zip with `cpdfir_manifest.json` (SHA-256 of every file) | `collectors/` |
+| Integrity since collection | On zip upload every file hash is checked against the manifest; changed, missing or extra files are reported immediately | `webapp/app.py` |
+| Case privacy | Per-visitor cases, read-only shared demo case, automatic deletion of guest cases (retention), SSH only to public hosts | `webapp/app.py` |
+| Pseudonymised export | Usernames, IPs, hosts, emails and AWS account / key IDs become keyed tokens (per-case secret); the ledger is never altered | `anonymize.py` |
+| Professional report | Executive summary with suggested next steps, case details and scope, findings, integrity, method and limits, appendix; dark and light themes; A4 print with page numbers | `report.py` |
+| Durable storage | If `DATABASE_URL` (PostgreSQL) is set, the data folder is mirrored to the database and restored on restart (with a SHA-256 check); keys live only in environment variables | `webapp/persist.py` |
+| Held-out validation | Frozen rules run once on 320 new real samples, separate from the development set | `heldout.py` |
+
+</details>
+
+---
+
+## Quick start
+
+Requirements: Python 3.12 or newer (the hosted demo uses 3.13).
+
+```bash
+git clone https://github.com/jayveerv/DFIR-Framework-WebApp.git
+cd DFIR-Framework-WebApp
+python -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+**Run the web console**
+
+```bash
+python webapp/app.py               # opens http://127.0.0.1:5000
+```
+
+On Windows you can double-click `run_webapp.bat`; on Linux or macOS use `./run_webapp.sh`. The first time, create your analyst
+account (the name appears in reports and in the custody ledger as the investigator).
+
+**Run the CLI demo**
+
+```bash
+python main.py demo                # simulated S1 attack, report opens in the browser
+python main.py tamper-demo         # shows tampering being detected
+```
+
+**Run the tests**
+
+```bash
+pip install -r requirements-dev.txt pytest
+python -m pytest tests -v
+```
+
+Tests that need `moto` and `freezegun` (the AWS emulator tests) are skipped if those packages are missing.
+
+**Deploy to Render (free)**
+
+New, then Blueprint, choose this repository, and set `DFIR_ADMIN_PASSWORD` and `DATABASE_URL` (a free Neon or Supabase PostgreSQL).
+Render generates `DFIR_CUSTODY_KEY` and `DFIR_SESSION_KEY` itself. Auto-deploy is off, so redeploy by hand after each push.
+
+---
+
+## Reproduce the paper
+
+All numbers and figures come from the real outputs in `results/` and `cases/`; nothing is typed in by hand.
+
+| What | Command | Output |
+|---|---|---|
+| Simulated scenarios S1 to S5, ablation, tamper tests (6 attack types x 5 scenarios = 30 attempts, plus untouched controls), scalability (full run, about 1 minute) | `python main.py evaluate` | `results/evaluation.json`, `results/metrics_summary.csv`, `results/scalability.csv`, `results/evaluation_report.html` |
+| Same, but scalability only up to 10,000 records | `python main.py evaluate --quick` | same files |
+| Real public data: EVTX-ATTACK-SAMPLES, LogHub, Stratus Red Team, plus the held-out set (downloads about 44 MB on the first run, needs internet) | `python main.py real-eval` | `results/real_data_results.json`, `results/real_data_report.html`, `results/heldout_results.json` |
+| Tamper-detection demo | `python main.py tamper-demo` | console output |
+| Dashboard with all figures (Figure 6 = development vs held-out detection bars, section Real-World Validation) | `python make_dashboard.py` | `results/dashboard.html` |
+| Table 8, step 1: download the held-out samples (needs internet) | `python -c "import heldout; heldout.fetch('.')"` | `real_data/heldout/` |
+| Table 8, step 2: Chainsaw on the 117 in-scope held-out samples (**UNTESTED, run on laptop**; needs the Chainsaw binary and a Sigma clone, see `scripts/README.md`) | `python scripts/run_chainsaw.py --chainsaw PATH --sigma DIR --mapping FILE` | `results/table8/chainsaw_per_sample.csv`, `chainsaw_meta.json` |
+| Table 8, step 3: Hayabusa on the same 117 samples (**UNTESTED, run on laptop**) | `python scripts/run_hayabusa.py --hayabusa PATH` | `results/table8/hayabusa_per_sample.csv`, `hayabusa_meta.json` |
+| Table 8, step 4: build the table (CP-DFIR frozen v1.1 row + both tools; a tool without results is shown as UNTESTED) | `python scripts/table8.py` | `results/table8.csv`, `results/table8.md` |
+| Check the Table 8 parsers on made-up fixtures (does not run the real tools) | `python scripts/table8.py --selftest` | console output |
+| False alarms on benign logs (**not measured yet**: needs a labelled real benign log set, see `scripts/README.md`) | `python scripts/benign_fp.py --dir DIR --assert-benign --n-sources N --source "NAME@COMMIT"` | `results/benign_fp.json` |
+| Unit and integration tests | `python -m pytest tests -v` | console output |
+
+The frozen held-out result that the paper reports is `results/heldout_frozen_v1.1.json` (rule fingerprint `804638ca9a700716`).
+Downloaded datasets are not stored in the repository; they are fetched into `real_data/` on first use.
+Timings in the scalability table depend on the machine; the shipped `results/scalability.csv` was produced on the author's computer.
+
+Not yet measured, and therefore not in the paper's numbers: Chainsaw and Hayabusa on the 117 samples, and the false-positive rate on real benign logs (the single-host result in Section 3b is one data point, not a rate).
+
+---
+
+## The web console
+
+The framework also runs as a working web application: upload or collect evidence, press Analyse, and the same framework
+(`pipeline.run_case`) runs and shows live results.
+
+| Page | What it does |
 |---|---|
-| **Cases** | Naya case banao (khaali ya simulated scenario S1–S5 / S1_cloud ke saath), saare cases ki list |
-| **Evidence** | Drag & drop upload (`.evtx`, wevtutil `.xml`, `auth.log`/`secure`, `cloudtrail.json`, host/ cloud/ JSON, `.zip`), file type khud pehchanta hai. Har original read-only rakha jata hai, SHA-256 ke saath |
-| Collectors | **Live triage** (isi computer ka), **AWS** (read-only keys, save nahi hoti), **Linux over SSH**, **Windows Security log export**, simulated scenario |
-| **Overview** | KPIs, pipeline ke 6 stages ka time, incidents, platform-wise alerts, top attacker IPs, rules fired |
-| **Investigation** | Entity graph (drag/zoom), cross-platform timeline, attack story, kill chain, incident ke events |
-| **MITRE ATT&CK** | Is case me kaun si techniques dikhi (matrix) |
-| **Cloud posture** | AWS account ki galtiyan (MFA off, public bucket, open ports, ...) |
-| **Evidence explorer** | Saare normalised events, search/filter/paging; row click → poora record + **original log line** + provenance |
-| **Chain of custody** | **Verify now** button, HMAC-signed ledger blocks, anchor hash (case folder ke **bahar** rakha jata hai), **tampering demo** (file badlo → TAMPERING DETECTED → restore) |
-| **Report & export** | Framework ki HTML report, timeline.csv, events/incidents JSON, ledger, poora case bundle (.zip) |
-| **Activity log** | Kisne kya kiya: upload (hash ke saath), collectors, analysis, verify, export |
-| Framework evaluation | 7 native pages: overview, accuracy, integrity, cloud, scalability, real-world validation, ATT&CK coverage (`results/*.json` se) |
-| System & self-test | Environment, 62 unit tests ek click me, password change |
-| Users & audit | (admin) analysts add/remove, global audit log (logins, failed logins), case delete |
+| **Cases** | Create a new case (empty, or with simulated scenario S1 to S5 / S1_cloud) and list all cases |
+| **Evidence** | Drag and drop upload (`.evtx`, wevtutil `.xml`, `auth.log` / `secure`, `cloudtrail.json`, host or cloud JSON, `.zip`); the file type is detected automatically. Originals are kept read-only with a SHA-256 |
+| Collectors | **Live triage** (this computer), **AWS** (read-only keys, never saved), **Linux over SSH**, **Windows Security log export**, simulated scenarios |
+| **Overview** | KPIs, time per pipeline stage, incidents, alerts by platform, top attacker IPs, rules fired |
+| **Investigation** | Entity graph (drag and zoom), cross-platform timeline, attack story, kill chain, events of an incident |
+| **MITRE ATT&CK** | Matrix of the techniques seen in this case |
+| **Cloud posture** | AWS account mistakes (MFA off, public bucket, open ports, and more) |
+| **Evidence explorer** | All normalised events with search, filter and paging; a row click shows the full record, the **original log line** and provenance |
+| **Chain of custody** | **Verify now**, HMAC-signed ledger blocks, anchor hash (kept outside the case folder), the **Merkle root of the findings** (verified against the ledger), and a **tampering demo** (change a file, see TAMPERING DETECTED, restore) |
+| **Download / Verify proof** | Every alert has a **Download proof** button (a small JSON file: the finding, its Merkle path and the root). The **Verify proof** page (`#/verify-proof`) checks a pasted or uploaded proof and says VALID or INVALID; with a case ID the root is also checked against that case's custody ledger |
+| **Report and export** | HTML report, `timeline.csv`, events and incidents JSON, ledger, full case bundle (`.zip`) |
+| **Activity log** | Who did what: uploads (with hash), collectors, analysis, verification, exports |
+| Framework evaluation | 7 native pages: overview, accuracy, integrity, cloud, scalability, real-world validation, ATT&CK coverage (from `results/*.json`) |
+| System and self-test | Environment, the unit tests in one click, password change |
+| Users and audit | (admin) add or remove analysts, global audit log (logins, failed logins), delete cases |
 
 **Forensic design**
-- Evidence originals `webapp_data/cases/<ID>/uploads/` me read-only; analysis unki copy par hoti hai (acquisition me phir se SHA-256).
-- Custody ledger **HMAC-signed** hai; key `webapp_data/custody.key` me (case folder ke bahar). Har analysis ka anchor hash `webapp_data/anchors.json` me.
-- CLI se bhi verify ho sakta hai: `python main.py verify --case webapp_data/cases/<ID>/case --custody-key-file webapp_data/custody.key --anchor <hash>`
-- Login (hashed passwords, 8 failed logins par 5 min lock), har API call par CSRF header check, default sirf `127.0.0.1` par sunta hai.
-- **Backup:** `webapp_data/` folder (cases + custody.key + anchors.json) ek saath rakho.
 
-**Online demo ke liye (baad me):** `python webapp/app.py --host 0.0.0.0 --port 8080 --no-browser` aur `DFIR_PUBLIC_MODE=1`
-(public mode me live triage / SSH / Windows export band rehte hain, kyunki wo server ka data lenge, aapke laptop ka nahi).
+- Evidence originals are stored read-only in `webapp_data/cases/<ID>/uploads/`; analysis runs on a copy (the acquisition step hashes again).
+- The custody ledger is **HMAC-signed**; the key is in `webapp_data/custody.key`, outside the case folders. The anchor hash of each analysis is in `webapp_data/anchors.json`.
+- You can also verify from the command line: `python main.py verify --case webapp_data/cases/<ID>/case --custody-key-file webapp_data/custody.key --anchor <hash>`
+- Login uses hashed passwords and a 5-minute lock after 8 failed attempts; every API call checks a CSRF header; by default the server listens only on `127.0.0.1`.
+- **Backup:** keep the `webapp_data/` folder (cases, `custody.key`, `anchors.json`) together.
 
-Files: `webapp/app.py` (Flask backend, framework ko bina badle use karta hai), `webapp/static/` (UI), `run_webapp.bat`, `run_webapp.sh`.
+**Public mode.** To host it online: `python webapp/app.py --host 0.0.0.0 --port 8080 --no-browser` with `DFIR_PUBLIC_MODE=1`. In public mode live
+triage, SSH and Windows export are disabled, because they would collect the server's data rather than yours, and the AWS
+collector does not accept access keys (run CP-DFIR locally for that). Two read-only demo cases are kept analysed with the current
+rule set: the S1 scenario alone (`S1_pure`: 244 events, 38 flagged) and S1 plus an AWS account state (268 events, 51 flagged).
 
----
+Files: `webapp/app.py` (Flask backend, uses the framework unchanged), `webapp/static/` (UI), `run_webapp.bat`, `run_webapp.sh`.
 
-## 0. Sundar Dashboard (sabse pehle ye dekho)
+### Static dashboard
 
-**`view_dashboard.bat`** par double-click karo — **CP-DFIR Investigation Console** browser me
-khulega (dark SOC-style, internet ki zarurat nahi). Left menu framework ke hisaab se hai:
-
-| Menu | Kya dikhata hai |
-|---|---|
-| Mission Control | title, 4-layer pipeline, main KPIs, F1 per scenario |
-| Evidence Collection | 5 collectors, acquisition per case, forensic-soundness rules |
-| Cross-Platform Correlation | precision/recall/F1, unified vs siloed, ablation |
-| Attack Investigation | case S1/S2/S3/S5 chuno — drag/zoom entity graph, timeline, kill chain |
-| Cloud Forensics | AWS posture checks (moto emulator), read-only API, cloud attack stages |
-| Chain of Custody | hash-chain blocks of the ledger, 7 tamper tests |
-| MITRE ATT&CK Coverage | 62 rules → 38 techniques → 11 tactics matrix |
-| Scalability | time vs records chart, per-stage time |
-| Real-World Validation | EVTX-ATTACK-SAMPLES, LogHub, Stratus results |
-| Evidence Explorer | S1 ke saare events, search + platform filter |
-
-Upar ◐ button se light theme. Kisi section ko seedha kholna ho to `dashboard.html#mitre` jaisa likho.
-
-> Saare numbers `results/evaluation.json`, `results/real_data_results.json` aur `cases/` ke **real output**
-> se aate hain — haath se kuch nahi likha. Command line: `python make_dashboard.py`.
-> Har section ka screenshot `screenshots/dashboard_*.png` me hai.
+`python make_dashboard.py` builds `results/dashboard.html`, a self-contained dark SOC-style viewer (no internet needed) with these
+sections: Mission Control, Evidence Collection, Cross-Platform Correlation, Attack Investigation, Cloud Forensics, Chain of Custody,
+MITRE ATT&CK Coverage, Scalability, Real-World Validation and Evidence Explorer. The button at the top switches to the light theme;
+open a section directly with, for example, `dashboard.html#mitre`. Screenshots are in `screenshots/`.
 
 ---
 
-## 1. Chalana kaise hai (Windows)
+## Command line (Windows menu and CLI)
 
-1. **Python** install karo (python.org/downloads). Install ke time **"Add python.exe to PATH"** tick karna.
-2. Zip par **Extract All** karo (zip ke andar se mat chalao), folder Desktop par rakho.
-3. **`run.bat`** par double-click karo. Pehli baar zaroori packages apne aap install honge (internet chahiye).
+On Windows, `run.bat` installs the required packages on first run (internet needed) and shows this menu:
 
-| Menu | Kya karta hai |
+| Menu | What it does |
 |---|---|
-| 1 | Demo: simulated attack, report browser me khulti hai |
-| 2 | Simulated scenarios par full evaluation (~1 min) |
-| 3 | **Asli public data par validation** (pehli baar ~44 MB download, ~3 min) |
-| 4 | Tampering demo (viva ke liye) |
-| 5 | **Apni logs analyze karo** |
-| 6 | Is laptop ka Windows Security log export karo (**Run as Administrator**) |
-| 7 | AWS CloudTrail events **aur account state** (IAM, access keys, S3, security groups) kheecho (AWS credentials chahiye) |
-| 8 | Unit tests (62 tests) |
-| 9 | **TRIAGE**: is laptop ka live evidence (processes, sockets, accounts, persistence, files, logs) collect karo, analyze karo, report banao |
+| 1 | Demo: simulated attack, report opens in the browser |
+| 2 | Full evaluation on simulated scenarios (about 1 minute) |
+| 3 | Validation on **real public data** (about 44 MB download the first time, about 3 minutes) |
+| 4 | Tampering demo |
+| 5 | **Analyse your own logs** |
+| 6 | Export this laptop's Windows Security log (**run as Administrator**) |
+| 7 | Pull AWS CloudTrail events **and account state** (IAM, access keys, S3, security groups); needs AWS credentials |
+| 8 | Unit tests |
+| 9 | **Triage**: collect live evidence from this laptop (processes, sockets, accounts, persistence, files, logs), analyse it and build a report |
 
 Command line: `python main.py triage | collect-host | demo | evaluate | real-eval | tamper-demo | analyze --input DIR | collect-live | collect-aws | collect-linux | verify --case DIR | selftest`
 
 ---
 
-## 2. Framework ki layers
+## 2. Framework layers
 
-| Layer | File | Kaam |
+| Layer | File | Job |
 |---|---|---|
-| Acquisition | `collect.py`, **`hostcollect.py`, `cloudstate.py`** | Logs `evidence/` me copy (hash pehle aur baad). **Live host collector** (section 3b), Windows `wevtutil` (XML/.evtx), AWS boto3 `LookupEvents`, Linux local/SSH |
-| Normalization | `normalize.py` | Sab formats ek schema me, sab time UTC me |
-| Correlation | `correlate.py` | 62 rule types, sab MITRE ATT&CK mapped (Windows 21, Linux 2, login/brute force 2, AWS CloudTrail 11, live host 15, AWS account posture 11) + NetworkX entity graph. Har connected component jisme activity alert hai, ek incident (posture findings akele incident nahi banate) |
-| Chain of Custody | `custody.py` | Har action ka SHA-256 + hash-chained ledger, **optional HMAC** (secret key se sign). File badle, entry badle, entry delete ho, last entry hate, ya poori chain rewrite ho (HMAC ke saath) to pakad leta hai |
-| Reporting | `report.py` | Self-contained HTML report (internet ya JavaScript nahi chahiye) |
-| Evaluation | `evaluate.py`, `generate_data.py` | Simulated scenarios + ground truth, tampering tests, scalability |
-| **Real-data validation** | `realdata.py` | **Asli** public logs par test (section 4) |
-| Tests | `tests/` | 62 tests (Windows account / defence-tampering / service-baseline rules ke 3 naye; hosted-console privacy, collector package integrity, pseudonymisation aur held-out labels ke 11 naye): asli processes/sockets (Linux), AWS collectors (botocore Stubber, AWS service model se validated), SSH collector (fake runner), parsers, rules, custody |
+| Acquisition | `collect.py`, `hostcollect.py`, `cloudstate.py` | Copies logs into `evidence/` (hash before and after). Live host collector (section 3b), Windows `wevtutil` (XML / .evtx), AWS boto3 `LookupEvents`, Linux local or SSH |
+| Normalisation | `normalize.py` | All formats into one schema; all times in UTC |
+| Correlation | `correlate.py` | 62 rule types, all mapped to MITRE ATT&CK (Windows 21, Linux 2, login / brute force 2, AWS CloudTrail 11, live host 15, AWS account posture 11) plus a NetworkX entity graph. Every connected component that contains an activity alert becomes an incident (posture findings alone do not create incidents) |
+| Chain of custody | `custody.py`, `merkle.py` | SHA-256 of every action in a hash-chained ledger with **optional HMAC** (signed with a secret key). Detects a changed file, a changed entry, a deleted entry, reordered entries, a removed last entry, and a fully rewritten chain (with HMAC). **Merkle per-finding proofs:** every finding (flagged event) is a leaf of a SHA-256 Merkle tree; the tree is written to `merkle_tree.json` and its root is recorded in the ledger, so one finding can be handed over and checked on its own |
+| Reporting | `report.py` | Self-contained HTML report (no internet or JavaScript needed) |
+| Evaluation | `evaluate.py`, `generate_data.py` | Simulated scenarios with ground truth, tampering tests, scalability |
+| Real-data validation | `realdata.py` | Tests on **real** public logs (section 4) |
+| Tests | `tests/` | 104 tests: real processes and sockets (Linux), AWS collectors (botocore Stubber validated against the AWS service model), SSH collector (fake runner), parsers, rules, custody, hosted-console privacy, collector package integrity, pseudonymisation, held-out labels, Merkle trees and proofs (including tampered and malformed proofs) |
 
 **Supported inputs**
-- **Windows:** `wevtutil` XML export ya binary **`.evtx`**. Security (4624, 4625, 4634, 4672, 4688, 4698, 4720, 4732, 5145, 1102), System (7045, 104), **Sysmon (1, 3, 10, 13)**, PowerShell 4104
-- **Linux:** `auth.log` / `secure`: sshd Failed/Accepted, sudo COMMAND, useradd; PAM-only logs (purane RedHat); traditional aur ISO timestamps; "message repeated N times"
-- **AWS:** CloudTrail JSON (`Records`, list, JSON Lines, glued objects, enriched exports jaise Datadog)
 
-**Cross-platform link kaise bante hain** (report me graph dikhta hai): same attacker IP; Linux par credential file read + `credential_inventory` (`case_config.json`) se AWS key; `CreateAccessKey` se purani key -> nayi key.
+- **Windows:** wevtutil XML export or binary `.evtx`. Security (4624, 4625, 4634, 4672, 4688, 4698, 4720, 4732, 5145, 1102), System (7045, 104), **Sysmon (1, 3, 10, 13)**, PowerShell 4104
+- **Linux:** `auth.log` / `secure`: sshd Failed and Accepted, sudo COMMAND, useradd; PAM-only logs (older RedHat); traditional and ISO timestamps; "message repeated N times"
+- **AWS:** CloudTrail JSON (`Records`, a list, JSON Lines, concatenated objects, enriched exports such as Datadog)
 
-**Configurable policy:** `privileged_source_allowlist` (case_config.json): admin logons sirf in IPs se expected; baaki flag.
+**How cross-platform links are made** (the report shows the graph): the same attacker IP; a credential file read on Linux plus the
+`credential_inventory` entry (`case_config.json`) that maps it to an AWS key; and `CreateAccessKey` linking an old key to a new key.
+
+**Configurable policy:** `privileged_source_allowlist` (in `case_config.json`): administrator logons are expected only from these IPs; others are flagged.
 
 ---
 
-## 3. Results: simulated data (ground truth generator se)
+## 3. Results on simulated data
 
-Poori detail `results/evaluation_report.html`.
+Full detail is in `results/evaluation_report.html`.
 
 | Measure | Result |
 |---|---|
 | Evidence completeness | 100% (5 scenarios) |
-| Correlation, core S1-S4 | Precision 100%, Recall 100%, **F1 = 1.000** |
-| Correlation, hard cases S5 | Precision 90.0%, Recall 69.2%, **F1 = 0.783** |
-| S5 + admin-source policy | Precision 92.9%, Recall 100%, **F1 = 0.963**; benign S4 + policy: 0 false alerts |
-| Unified vs siloed | S1: siloed best 42.1% of attack chain, unified 100%. S2: 64.0% vs 100% |
-| Integrity | 25/25 tampering attacks detected (5 attack types x 5 scenarios, including a forged chain caught by HMAC), 5/5 untouched cases verified. Bina HMAC/anchor ke forged chain **nahi** pakdi jaati (table me "known limitation" row) |
-| Scalability | 1,067 records: 0.06 s ... 104,634 records: 6.2 s (~16,700 records/s, linear); attack still found (F1 1.000) |
+| Correlation, core S1 to S4 | Precision 100%, Recall 100%, **F1 = 1.000** |
+| Correlation, hard case S5 | Precision 90.0%, Recall 69.2%, **F1 = 0.783** |
+| S5 with admin-source policy | Precision 92.9%, Recall 100%, **F1 = 0.963**; benign S4 with policy: 0 false alerts |
+| Unified versus siloed | S1: best silo finds 42.1% of the attack chain, unified 100%. S2: 64.0% versus 100% |
+| Integrity | 30 of 30 tampering attacks detected (6 attack types x 5 scenarios, including reordered entries and a forged chain caught by HMAC); 5 of 5 untouched cases verified. A forged chain is **not** caught without HMAC or an anchor (listed as a known limitation) |
+| Scalability | 1,067 records in 0.06 s, up to 104,634 records in 7.7 s. Throughput falls from about 16,800 to about 13,600 records/s, so scaling is near-linear. The attack is still found (F1 1.000) |
 
-**Ye numbers kamzor saboot hain**: data aur rules dono isi project me bane hain. Isliye section 4 zaroori hai.
+**These numbers are weak evidence**: both the data and the rules were created in this project. That is why section 4 matters.
 
 ---
 
 ## 3b. Live host evidence collection (`hostcollect.py`)
 
-`python main.py triage` (menu 9) is laptop se live evidence collect karta hai, order of volatility (RFC 3227) me, sirf read-only:
+`python main.py triage` (menu 9) collects live evidence from this computer in order of volatility (RFC 3227), read-only:
 
-| Artifact | Kya |
+| Artifact | What |
 |---|---|
-| `system.json` | host, OS, boot time, logged-in users, admin hai ya nahi |
-| `connections.json` | network sockets + owning process |
-| `processes.json` | process list: exe path, command line, user, parent, **exe SHA-256**, deleted binary |
-| `accounts.json` | local accounts, admin groups, sudoers (Linux) / `net user`, Administrators (Windows) |
+| `system.json` | Host, OS, boot time, logged-in users, whether you are an administrator |
+| `connections.json` | Network sockets and the owning process |
+| `processes.json` | Process list: executable path, command line, user, parent, **executable SHA-256**, deleted binary |
+| `accounts.json` | Local accounts, admin groups, sudoers (Linux) or `net user` and Administrators (Windows) |
 | `persistence.json` | cron, systemd, rc.local, ld.so.preload, authorized_keys (Linux); Run keys, startup folder, scheduled tasks, services (Windows); LaunchAgents (macOS) |
-| `files.json` | pichhle 7 din ki temp/download files: ELF/PE/script magic, SHA-256, **timestomp** check (ctime) |
-| `Security.evtx` / `auth.log` | security logs (Windows: Administrator chahiye) |
-| `manifest.json` | har artifact ka hash, chalaye gaye commands, errors, **jo collect NAHI ho paya** |
+| `files.json` | Temp and download files of the last 7 days: ELF / PE / script magic, SHA-256, **timestomp** check (ctime) |
+| `Security.evtx` / `auth.log` | Security logs (Windows needs Administrator) |
+| `manifest.json` | Hash of every artifact, the commands that ran, errors, and **what could not be collected** |
 
-Har file custody ledger me jaati hai, aur analysis me wahi logs wale rules + 15 host rules chalte hain (temp se chalta process, deleted/memfd binary, reverse shell, cron/systemd/authorized_keys persistence, UID 0 duplicate, executable in temp, timestomp, ...). Host ka process/socket **auth.log ya CloudTrail ke attacker IP se same incident me judta hai**.
+Every file goes into the custody ledger. Analysis then runs the log rules plus 15 host rules (process running from a temp folder,
+deleted or memfd binary, reverse shell, cron / systemd / authorized_keys persistence, duplicate UID 0, executable in temp,
+timestomp, and others). A host process or socket is **linked to the same incident as an attacker IP from auth.log or CloudTrail**.
 
-**Asli test (Linux, isi machine par):** tests asli process banate hain (`/tmp` se chalta binary, deleted binary, memfd process, timestomped binary, bash ka asli TCP connection) aur check karte hain ki collector unhe dekhta hai aur rule fire hota hai. Asli system par chalane se 5 bug mile aur theek hue: journalctl ka "-- No entries --" nakli auth.log ban gaya; collector apni hi files "recent files" me ginta tha; `psutil` deleted-binary ka `(deleted)` hata deta hai; recent-file check sirf `mtime` par tha (timestomp se bach jaata); 500 ki cap purani-mtime wali dropped binary ko kaat deti thi.
-**Asli benign host par false positives:** 1 asli benign Linux host (ye test VM): 62 processes, 57 accounts, 15 persistence entries, 978 recent files -> **3 alerts**, teeno benign: (1) `/tmp` me ek chromedriver binary (test tool, *executable_in_temp*), (2) `/tmp` me ek chhoti executable file (*executable_in_temp*), (3) sandbox ka apna telemetry agent memfd se chalta hai (*fileless_memfd_process*). Yaani **3 false positives**. Sirf ek host hai, isliye ye FP *rate* nahi, ek data point hai. Apne laptop par menu 9 chalake dekho kitne alerts aate hain.
+**Real test (Linux, on the test machine).** The tests create real processes (a binary running from `/tmp`, a deleted binary, a
+memfd process, a timestomped binary, a real TCP connection from bash) and check that the collector sees them and the rule fires.
+Running on a real system found 5 bugs, now fixed: journalctl's "-- No entries --" became a fake auth.log; the collector counted its
+own files as recent files; `psutil` strips the `(deleted)` marker of a deleted binary; the recent-file check used only `mtime`
+(so timestomping escaped it); and a cap of 500 files could cut off an old-mtime dropped binary.
+
+**False positives on a real benign host.** One real benign Linux host (this test VM): 62 processes, 57 accounts, 15 persistence
+entries, 978 recent files gave **3 alerts**, all benign: a chromedriver binary in `/tmp` (a test tool, *executable_in_temp*), a
+small executable in `/tmp` (*executable_in_temp*), and the sandbox's own telemetry agent running from memfd (*fileless_memfd_process*).
+That is **3 false positives** on a single host, so it is one data point and not a false-positive rate.
 
 ---
 
 ## 3c. Cloud account state (`cloudstate.py`)
 
-`python main.py collect-aws --days 7 --region ap-south-1 [--all-regions]` CloudTrail events ke saath **account ki state** bhi collect karta hai (`--no-state` se skip). Read-only. CloudTrail batata hai kya hua; state batati hai attacker kya kar sakta tha, kya band tha, aur kya khula tha.
+`python main.py collect-aws --days 7 --region ap-south-1 [--all-regions]` collects CloudTrail events and the **account state**
+(use `--no-state` to skip it). It is read-only. CloudTrail shows what happened; the state shows what the attacker could do, what was
+switched off and what was open.
 
-| Artifact | Kya |
+| Artifact | What |
 |---|---|
-| `trails.json` | CloudTrail trails, logging on/off, multi-region, log-file validation |
-| `iam_account.json` | root account MFA |
-| `iam_users.json` | users, MFA, **administrator rights** (AdministratorAccess ya customer-managed policy jiska document `Action *` / `Resource *` de, direct ya group se), access keys (age, last use) |
-| `iam_roles.json` | roles aur **kaun assume kar sakta hai** (dusra account, "anyone") |
-| `s3_buckets.json` | public-access block, public bucket policy (`IsPublic` na mile to policy khud evaluate hoti hai) |
-| `security_groups.json` | Internet ke liye khule ports (ek region, ya `--all-regions`) |
-| `manifest.json` | har artifact ka hash, API operations jo use hue, **denied ya failed calls** |
+| `trails.json` | CloudTrail trails: logging on or off, multi-region, log-file validation |
+| `iam_account.json` | Root account MFA |
+| `iam_users.json` | Users, MFA, **administrator rights** (AdministratorAccess, or a customer-managed policy whose document allows `Action *` on `Resource *`, directly or through a group), access keys (age, last use) |
+| `iam_roles.json` | Roles and **who can assume them** (another account, "anyone") |
+| `s3_buckets.json` | Public-access block, public bucket policy (evaluated by the tool if `IsPublic` is missing) |
+| `security_groups.json` | Ports open to the Internet (one region, or `--all-regions`) |
+| `manifest.json` | Hash of every artifact, API operations used, **denied or failed calls** |
 
-Denied call "unknown" record hota hai, "missing" nahi (jis account ka IAM padha nahi gaya use "no MFA" nahi kaha jata). **11 posture rules:** no trail / trail logging off, trail log-file validation off, root MFA missing, admin without MFA, stale access key (90+ din), role trusts anyone, role trusts another account (`cloud_trusted_accounts` se allowlist), public bucket, public-access block incomplete, SSH/RDP/all ports world-open. **Posture findings akele incident nahi banate**; agar attacker ne koi key use ki ho to us key ka account record (user, stale ya nahi) incident me judta hai.
+A denied call is recorded as "unknown", not "missing" (an account whose IAM could not be read is not called "no MFA"). **11 posture
+rules:** no trail or trail logging off, trail log-file validation off, root MFA missing, admin without MFA, stale access key
+(over 90 days), role trusts anyone, role trusts another account (allowlist via `cloud_trusted_accounts`), public bucket,
+incomplete public-access block, and SSH / RDP / all ports open to the world. **Posture findings alone do not create an incident**;
+if an attacker used a key, that key's account record (user, stale or not) joins the incident.
 
-**Tests, teen tarah:**
-1. **Labelled fixture** (JSON, maine banayi): 13 me se 13 findings, 0 false positive, clean account par 0.
-2. **botocore Stubber** (responses AWS service model se validated): collector ka call order aur error handling, AccessDenied.
-3. **moto AWS emulator ke saath asli boto3 code path** (`tests/test_cloud_emulated.py`): seeded account me 14 misconfigurations aur harmless look-alikes (custom-policy admin, group se admin MFA ke saath, inactive aur fresh key, conditional aur service role trust, fully blocked bucket, port 443, internal rule). **14 me se 14 mile, 0 false positive**; `--all-regions` se 15 me 15. Collector ne **sirf List/Get/Describe** operations use kiye (test isko check karta hai). 230 users ki pagination. Abused key ke saath attack: 5 key records me se sirf abused wali incident me judi.
-**Ye emulator hai, asli AWS account nahi**: emulator boto3 ke request/response handling aur meri code ko test karta hai, AWS ke asli behaviour ko nahi. Asli account par kabhi nahi chala. Permissions (sab read-only): sts:GetCallerIdentity, cloudtrail:DescribeTrails/GetTrailStatus, iam:GetAccountSummary/ListUsers/ListRoles/ListAccessKeys/GetAccessKeyLastUsed/ListMFADevices/ListAttachedUserPolicies/ListGroupsForUser/ListAttachedGroupPolicies/GetPolicy/GetPolicyVersion, s3:ListAllMyBuckets/GetBucketPublicAccessBlock/GetBucketPolicyStatus/GetBucketPolicy, ec2:DescribeSecurityGroups (+ DescribeRegions).
-Emulator tests ke liye `pip install moto freezegun` (`requirements-dev.txt`); nahi hon to ye tests skip hote hain.
+**Three kinds of testing:**
+
+1. **Labelled fixture** (JSON, written by the author): 13 of 13 findings, 0 false positives, and 0 findings on a clean account.
+2. **botocore Stubber** (responses validated against the AWS service model): collector call order and error handling, AccessDenied.
+3. **moto AWS emulator with the real boto3 code path** (`tests/test_cloud_emulated.py`): a seeded account with 14 misconfigurations
+   and harmless look-alikes (custom-policy admin, admin through a group with MFA, inactive and fresh keys, conditional and service role
+   trust, a fully blocked bucket, port 443, an internal rule). **14 of 14 found, 0 false positives**; with `--all-regions` 15 of 15.
+   The collector used **only List / Get / Describe** operations (a test checks this). Pagination was tested with 230 users. With an abused
+   key, only 1 of 5 key records joined the incident.
+
+**This is an emulator, not a real AWS account.** It tests boto3's request and response handling and this code, not AWS's real
+behaviour. The collector has never been run against a real account. Permissions needed (all read-only): `sts:GetCallerIdentity`,
+`cloudtrail:DescribeTrails`, `cloudtrail:GetTrailStatus`, `iam:GetAccountSummary`, `iam:ListUsers`, `iam:ListRoles`,
+`iam:ListAccessKeys`, `iam:GetAccessKeyLastUsed`, `iam:ListMFADevices`, `iam:ListAttachedUserPolicies`, `iam:ListGroupsForUser`,
+`iam:ListAttachedGroupPolicies`, `iam:GetPolicy`, `iam:GetPolicyVersion`, `s3:ListAllMyBuckets`, `s3:GetBucketPublicAccessBlock`,
+`s3:GetBucketPolicyStatus`, `s3:GetBucketPolicy`, `ec2:DescribeSecurityGroups` (and `ec2:DescribeRegions`).
+For the emulator tests install `moto` and `freezegun` (`requirements-dev.txt`).
 
 ---
 
-## 4. Results: REAL public data
+## 4. Results on real public data
 
-Poori detail `results/real_data_report.html`. Data GitHub se download hota hai (zip me nahi hai).
+Full detail is in `results/real_data_report.html`. The data is downloaded from GitHub and is not part of this repository.
 
-| Data | Kya | Result |
+| Data | What | Result |
 |---|---|---|
-| **Windows** EVTX-ATTACK-SAMPLES | 278 asli attack captures, 37,364 records | **0 parse errors.** 228 samples (82.0%) me supported events (pehle 12.2%). Labelled 26 samples me se **25 detected**; 5 jaan-boojhkar mushkil/unsupported cases me **0/5** |
-| **Linux** LogHub OpenSSH_2k | asli Internet-facing SSH server, 2,000 lines | 520 events (26%); failures **527 = 527** independent regex count; brute-force IPs **11 = 11** (independent naive detector se same set) |
-| Linux LogHub Linux_2k | purana RedHat format | 489 events (24.4%); brute-force IPs 39 = 39 |
-| **AWS** Stratus Red Team CloudTrail | 4 asli attack samples (15 events) | **4/4 detected** (pehle version: 1/4 aur ek file par crash) |
+| **Windows** EVTX-ATTACK-SAMPLES | 278 real attack captures, 37,364 records | **0 parse errors.** 228 samples (82.0%) contain supported events (12.2% before the parser work). Of 26 labelled samples, **25 detected**; on 5 deliberately hard or unsupported cases, **1 of 5** (Kerberos password spray 4771, caught by the brute-force rule since v1.3 counts 4768/4771 failures) |
+| **Linux** LogHub OpenSSH_2k | A real Internet-facing SSH server, 2,000 lines | 520 events (26%); failures **527 = 527** against an independent regex count; brute-force IPs **11 = 11** against an independent naive detector (same set) |
+| Linux LogHub Linux_2k | Older RedHat format | 489 events (24.4%); brute-force IPs 39 = 39 |
+| **AWS** Stratus Red Team CloudTrail | 4 real attack samples (15 events) | **4 of 4 detected** (earlier version: 1 of 4 and a crash on one file) |
 
-**Asli data se jo bugs mile aur theek hue:** `.evtx` binary padha nahi jaata tha; real time format (`2019-03-19 23:35:07+00:00`) fail; CloudTrail me source IP alag jagah (enriched export); ek real CloudTrail file invalid JSON (records ke beech comma nahi) par crash; syslog "message repeated 5 times" ek failure ginta tha (brute-force IPs 9 -> 11 hue); purane RedHat `sshd(pam_unix)` format 0% parse.
+**Bugs found with real data and fixed:** binary `.evtx` could not be read; the real time format (`2019-03-19 23:35:07+00:00`) failed;
+the CloudTrail source IP was in a different place (enriched export); one real CloudTrail file was invalid JSON (no comma between
+records) and crashed the parser; syslog "message repeated 5 times" was counted as one failure (brute-force IPs went from 9 to 11);
+the older RedHat `sshd(pam_unix)` format parsed at 0%.
 
-### 4b. Held-out validation (rules frozen, naye samples)
+### 4b. Held-out validation (frozen rules, new samples)
 
-Upar wale labelled results development set hain (rules unhi samples ko dekh kar likhe gaye). Isliye rules ko **freeze** karke
-(fingerprint `804638ca9a700716`) **320 naye real samples** par **ek baar** chalaya, jo rules likhte waqt kabhi nahi dekhe gaye:
-Hayabusa sample collection (fixed commit) = EVTX-to-MITRE-Attack + DeepBlueCLI (SANS) + Yamato Security. Ek file jo
-development set se byte-identical thi, hata di.
+The labelled results above are a development set (the rules were written while looking at those samples). So the rules were
+**frozen** (fingerprint `804638ca9a700716`) and run **once** on **320 new real samples** that were never seen when writing the rules:
+the Hayabusa sample collection (fixed commit), which is EVTX-to-MITRE-Attack, DeepBlueCLI (SANS) and Yamato Security. One file that
+was byte-identical to the development set was removed.
 
-| | Samples | Alert aaya | Sahi technique |
+| | Samples | Alert raised | Correct technique |
 |---|---|---|---|
-| In scope (technique ka rule hai) | 117 | 36 (30.8%) | **26 (22.2%)** |
+| In scope (a rule for the technique exists) | 117 | 36 (30.8%) | **26 (22.2%)** |
 | DeepBlueCLI (classic attacks) | 14 in scope | 13 | 8 |
 | EVTX-to-MITRE-Attack | 102 in scope | 22 | 17 |
 
-**Matlab:** development-set ka 25/26 naye data par nahi tikta. Classic captures (PsExec, Mimikatz, PowerShell, log clearing) theek
-pakde jaate hain; EVTX-to-MITRE ke zyada-tar samples aise Security events use karte hain jo framework abhi parse nahi karta
-(4738/4724/5136 account changes, 4656/4663 object access). Ye gaps tune nahi kiye gaye (warna ye set bhi development set ban jaata);
-inhe band karne ke liye naye parsers + rules aur phir ek aur unseen set chahiye. 15 files (1,681 records) python-evtx 0.8 ke
-NullTypeNode bug ki wajah se decode nahi hoti - gini gayi hain, chhupayi nahi. Chalana: `python main.py real-eval` (held-out bhi isi me).
+**What this means:** the 25 of 26 on the development set does not carry over to new data. Classic captures (PsExec, Mimikatz,
+PowerShell, log clearing) are caught well. Most EVTX-to-MITRE-Attack samples use Security events the framework did not parse at that time
+(4738 / 4724 / 5136 account changes, 4656 / 4663 object access). These gaps were not tuned against this set (otherwise it would become
+a development set too); closing them needs new parsers and rules and then another unseen set. 15 files (1,681 records) cannot be
+decoded because of a `python-evtx` 0.8 NullTypeNode bug; they are counted, not hidden. Run: `python main.py real-eval` (the held-out run is part of it).
 
-**Jo abhi bhi nahi pakda gaya (report me MISS likha hai):** rdrleakdiag LSASS dump (sample me LSASS-access event nahi hai; command line se *credential_dump_tool* alert aata hai, par label *lsass_access* maangta hai, isliye MISS gina), renamed regsvr32, msxsl, Security 4656/4663 object-access LSASS, TeamViewer memory dump, Kerberos password spray (4771).
-
----
-
-## 5. Kya measure NAHI hua (limitations)
-
-1. **Asli benign traffic par false-positive rate** measure nahi hua: koi labelled asli benign log available nahi tha.
-2. **Asli multi-platform incident par correlation** measure nahi hua: koi public dataset me ek incident ke asli Windows + Linux + AWS logs nahi hain. Cross-platform correlation sirf **simulated** scenarios par evaluate hua.
-3. Detection rules **asli samples dekhne ke baad** likhe gaye, isliye EVTX-ATTACK-SAMPLES ke labelled results "development set" hain. Isliye section 4b me frozen rules ko **320 unseen samples** par test kiya: wahan in-scope samples me sahi technique **22.2%** hai. Ye number honest baseline hai.
-4. Sample labels file names se liye gaye hain (meri reading), dataset ke official per-rule labels nahi.
-5. **Live collectors ka asli test kahan hua:** host collector Linux par **asli system par** test hua. **Windows aur macOS paths (registry Run keys, schtasks, services, wevtutil, LaunchAgents) is project ke dauran Windows/macOS machine par chale nahi**: parsers documented output formats par fixture se test hue, par asli output par nahi. AWS collector botocore stub se, SSH collector fake runner se test hua (asli sshd/AWS account nahi). **Apne Windows laptop par menu 9 chalao: wahi sabse zaroori check hai.** Naya PowerShell collector (`collectors/cpdfir-collect-windows.ps1`) PowerShell 7.4 parser se syntax-check hua (0 errors); asli Windows par chalana bhi zaroori hai.
-6. Rule-based detection: rules se bahar ke attacks nahi pakde jaate.
-7. Linux session attribution heuristic hai (same user ka latest login). S5 me isse ek false positive aata hai.
-8. Credential file -> AWS key link ke liye analyst ka `credential_inventory` chahiye.
-9. Custody ledger tampering **pakadta hai, rokta nahi**. Last entries ka delete hona tabhi pakda jata hai jab anchor hash alag noted ho, aur poori chain ka rewrite tabhi jab ledger HMAC-signed ho (`--custody-key-file` ya `DFIR_CUSTODY_KEY`) aur key attacker ke paas na ho. Agar attacker ke paas key ya ledger likhne ka poora access hai to ye guarantee nahi.
-10b. Host collector memory dump ya disk image nahi leta, sirf artifacts. Timestomp check Linux par ctime se; Windows par nahi. Live collection khud system ko thoda badalti hai (nayi process, files padhna).
-11. Speed single process me, 100,000 records tak.
+**Still missed (marked MISS in the report):** rdrleakdiag LSASS dump (the sample has no LSASS-access event; the command line triggers
+*credential_dump_tool* but the label asks for *lsass_access*, so it counts as a MISS), renamed regsvr32, msxsl, Security 4656/4663
+object-access LSASS, and TeamViewer memory dump.
 
 ---
 
-## 6. Apni logs analyze karna
+## 5. What is NOT measured (limitations)
 
-Ek folder me jo files hain wo daalo: `windows_security.xml` ya `*.evtx`, `auth.log`, `cloudtrail.json`, aur (optional) `case_config.json`:
+1. **False-positive rate on real benign traffic** was not measured: no labelled real benign log was available.
+2. **Correlation on a real multi-platform incident** was not measured: no public dataset contains real Windows, Linux and AWS logs of one incident. Cross-platform correlation was evaluated only on **simulated** scenarios.
+3. The detection rules were written **after looking at real samples**, so the labelled EVTX-ATTACK-SAMPLES results are a development set. Section 4b therefore tests the frozen rules on **320 unseen samples**, where the correct technique is found in **22.2%** of in-scope samples. That is the honest baseline.
+4. Sample labels were taken from file names (the author's reading), not from official per-rule labels of the dataset.
+5. **Where the live collectors were really tested:** the host collector was tested on a **real Linux system**. **The Windows and macOS paths (registry Run keys, schtasks, services, wevtutil, LaunchAgents) were not run on a Windows or macOS machine during this project**: the parsers were tested on fixtures of the documented output formats, not on real output. The AWS collector was tested with a botocore stub, and the SSH collector with a fake runner (no real sshd or AWS account). The PowerShell collector (`collectors/cpdfir-collect-windows.ps1`) was syntax-checked with the PowerShell 7.4 parser (0 errors) but has not been run on real Windows. **Running menu 9 on a Windows laptop is the most important check.**
+6. Detection is rule-based: attacks outside the rules are not found.
+7. Linux session attribution is a heuristic (the latest login of the same user). In S5 this causes one false positive.
+8. Linking a credential file to an AWS key needs the analyst's `credential_inventory`.
+9. The custody ledger **detects tampering; it does not prevent it.** Removing the last entries is caught only if the anchor hash is noted separately, and a full rewrite of the chain only if the ledger is HMAC-signed (`--custody-key-file` or `DFIR_CUSTODY_KEY`) and the key is not in the attacker's hands. If the attacker has the key or full write access to the ledger, there is no guarantee. On the public demo the anchor is stored on the same server.
+10. The host collector takes no memory dump or disk image, only artifacts. The timestomp check uses ctime on Linux and is absent on Windows. Live collection itself changes the system slightly (a new process, files read).
+11. Speed was measured in a single process up to 100,000 records.
+12. **Merkle per-finding proofs are tamper-evident, not tamper-proof.** (a) `leaf_count` is not hashed into the root: the offline
+    check alone (`verify_proof` without a case) still passes when the count is changed to another value with the same path shape
+    (for example 7 to 8); the check against the custody ledger (`verify_proof_against_ledger`, or the Verify proof page with a case
+    ID) catches it. (b) A leaf covers only 15 fields (`event_id, time_utc, source, host, event_type, user, src_ip, target, outcome,
+    detail, source_file, line_ref, flags, techniques, incident`); a change to `severity`, `raw` or other fields is not caught by a
+    proof (the file hash of `normalized_events.json` in the ledger still covers them). (c) A proof shows that a finding is in the
+    tree; it does not show that the findings are complete (a finding dropped before the tree was built is not detected). (d) The root
+    is trusted only through the HMAC-signed ledger: an attacker who has the key, or write access to the whole ledger, tree file and
+    anchor, defeats it. Without a trusted root a proof is only self-consistent.
+
+---
+
+## 6. Analysing your own logs
+
+Put these files in one folder: `windows_security.xml` or `*.evtx`, `auth.log`, `cloudtrail.json`, and (optional) `case_config.json`:
 
 ```json
 {
   "case_id": "CASE-001",
-  "investigator": "Jayveer Vasava",
+  "investigator": "Your Name",
   "linux_timezone_offset": "+05:30",
   "linux_log_year": 2026,
   "internal_ranges": ["198.51.100.0/24"],
@@ -292,12 +419,44 @@ Ek folder me jo files hain wo daalo: `windows_security.xml` ya `*.evtx`, `auth.l
 }
 ```
 
-Menu 5 ya `python main.py analyze --input "folder"`. Report `cases/<case_id>/report.html`. Verify: `python main.py verify --case cases/DEMO --anchor <hash>`.
+Run `python main.py analyze --input "folder"` (or menu 5). The report is written to `cases/<case_id>/report.html`.
+Verify with `python main.py verify --case cases/DEMO --anchor <hash>`.
 
-**AWS live:** `pip install boto3`, AWS credentials (`aws configure` ya read-only IAM user jisme `cloudtrail:LookupEvents` ho), phir `python main.py collect-aws --days 7 --region ap-south-1`. Sirf management events aate hain (last 90 din).
-**Linux:** `python main.py collect-linux --host SERVER --user ubuntu --key key.pem` (key-based SSH) ya bina `--host` ke local file copy.
-**Windows:** menu 6 (Administrator), ya `wevtutil qe Security /c:5000 /rd:false /f:xml > windows_security.xml`.
+**AWS live:** `pip install boto3`, set up AWS credentials (`aws configure`, or a read-only IAM user with `cloudtrail:LookupEvents`), then
+`python main.py collect-aws --days 7 --region ap-south-1`. Only management events are returned (the last 90 days).
+**Linux:** `python main.py collect-linux --host SERVER --user ubuntu --key key.pem` (key-based SSH), or without `--host` to copy local files.
+**Windows:** menu 6 (as Administrator), or `wevtutil qe Security /c:5000 /rd:false /f:xml > windows_security.xml`.
 
-## 7. Aage ka kaam
+---
 
-Asli benign logs par FP measure karna, asli AWS account / Windows / Linux par live test, Sysmon 11/7 aur Kerberos events, anomaly-based detection, Azure/GCP aur Docker/Kubernetes, blockchain-based custody ledger.
+## 7. Future work
+
+Measure the false-positive rate on real benign logs; live tests on a real AWS account, Windows and Linux; Sysmon 11 / 7 and Kerberos
+events; anomaly-based detection; Azure and GCP; Docker and Kubernetes; a blockchain-based custody ledger.
+
+---
+
+## How to cite
+
+<!-- TODO: replace the placeholder below with the real DOI after the Zenodo release of v1.3. -->
+
+If you use CP-DFIR, please cite the software archive:
+
+```bibtex
+@software{vasava_cpdfir_2026,
+  author  = {Vasava, Jayveer},
+  title   = {CP-DFIR: Cross-Platform DFIR Framework},
+  version = {1.3},
+  year    = {2026},
+  doi     = {10.5281/zenodo.XXXXXXX},
+  url     = {https://github.com/jayveerv/DFIR-Framework-WebApp}
+}
+```
+
+A `CITATION.cff` file is included so GitHub shows a "Cite this repository" button.
+
+## License
+
+Released under the [MIT License](LICENSE). Copyright (c) 2026 Jayveer Vasava.
+
+The sample captures downloaded by `real-eval` (EVTX-ATTACK-SAMPLES, Hayabusa samples, LogHub, Stratus Red Team) keep their own licenses and are not part of this repository.

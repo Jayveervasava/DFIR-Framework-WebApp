@@ -7,7 +7,7 @@ if "%PY%"=="" where py >nul 2>&1 && set PY=py
 if "%PY%"=="" goto nopython
 %PY% -c "import networkx, Evtx, boto3, psutil" >nul 2>&1
 if errorlevel 1 (
-  echo Zaroori packages install ho rahe hain. Ye sirf ek baar hoga, internet chahiye.
+  echo Installing required packages. This happens only once and needs internet.
   %PY% -m pip install -r requirements.txt
 )
 :menu
@@ -56,7 +56,7 @@ if "%c%"=="5" (
 if "%c%"=="6" (
   %PY% main.py collect-live --out live_logs --fmt evtx
   echo.
-  echo Ab option 5 chalao aur folder me live_logs likho.
+  echo Now run option 5 and enter live_logs as the folder.
   pause
   goto menu
 )
@@ -64,7 +64,7 @@ if "%c%"=="7" (
   set /p days=Kitne din ke events? 
   %PY% main.py collect-aws --out live_logs --days %days%
   echo.
-  echo Ab option 5 chalao aur folder me live_logs likho.
+  echo Now run option 5 and enter live_logs as the folder.
   pause
   goto menu
 )
@@ -81,5 +81,5 @@ if "%c%"=="9" (
 if "%c%"=="0" exit /b
 goto menu
 :nopython
-echo Python nahi mila. python.org/downloads se install karo, aur install ke time "Add python.exe to PATH" tick karna.
+echo Python not found. Install it from python.org/downloads and tick "Add python.exe to PATH" during setup.
 pause

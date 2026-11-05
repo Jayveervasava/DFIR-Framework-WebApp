@@ -67,6 +67,12 @@
      "passed": true
     },
     {
+     "test": "Ledger entries reordered (entries 2 and 3 swapped)",
+     "expect_detect": true,
+     "detected": true,
+     "passed": true
+    },
+    {
      "test": "Ledger forged: entry edited and whole hash chain recomputed (HMAC key set)",
      "expect_detect": true,
      "detected": true,
@@ -151,6 +157,12 @@
     },
     {
      "test": "Ledger truncated (last entry removed, anchor noted)",
+     "expect_detect": true,
+     "detected": true,
+     "passed": true
+    },
+    {
+     "test": "Ledger entries reordered (entries 2 and 3 swapped)",
      "expect_detect": true,
      "detected": true,
      "passed": true
@@ -250,6 +262,12 @@
      "passed": true
     },
     {
+     "test": "Ledger entries reordered (entries 2 and 3 swapped)",
+     "expect_detect": true,
+     "detected": true,
+     "passed": true
+    },
+    {
      "test": "Ledger forged: entry edited and whole hash chain recomputed (HMAC key set)",
      "expect_detect": true,
      "detected": true,
@@ -328,6 +346,12 @@
     },
     {
      "test": "Ledger truncated (last entry removed, anchor noted)",
+     "expect_detect": true,
+     "detected": true,
+     "passed": true
+    },
+    {
+     "test": "Ledger entries reordered (entries 2 and 3 swapped)",
      "expect_detect": true,
      "detected": true,
      "passed": true
@@ -422,6 +446,12 @@
     },
     {
      "test": "Ledger truncated (last entry removed, anchor noted)",
+     "expect_detect": true,
+     "detected": true,
+     "passed": true
+    },
+    {
+     "test": "Ledger entries reordered (entries 2 and 3 swapped)",
      "expect_detect": true,
      "detected": true,
      "passed": true
@@ -726,5 +756,6 @@
  ],
  "overall_precision": 1.0,
  "overall_recall": 1.0,
- "overall_f1": 1.0
+ "overall_f1": 1.0,
+ "note": "v1.3 step-5: scenario 'tamper' lists regenerated (6 attack types, 30 detect-expected attempts); all other fields (timings, scalability, cloud_emulated) are carried over from the earlier full run on the author's machine. Re-run 'python3 main.py evaluate' on one machine to regenerate everything in a single run."
 }
