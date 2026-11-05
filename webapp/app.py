@@ -52,7 +52,7 @@ from make_dashboard import TACTICS, TECH  # noqa: E402
 from report import CLOUD_STATE_TYPES  # noqa: E402
 
 APP_NAME = "CP-DFIR Investigation Console"
-VERSION = "1.0"
+VERSION = "1.3"
 DATA = os.path.abspath(os.environ.get("DFIR_DATA_DIR") or os.path.join(ROOT, "webapp_data"))
 CASES = os.path.join(DATA, "cases")
 TMP = os.path.join(DATA, "tmp")
