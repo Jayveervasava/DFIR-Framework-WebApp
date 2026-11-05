@@ -81,3 +81,13 @@ Screenshots: `CP-DFIR-screenshots.zip` (repo me nahi; chat me alag diya).
 4. Zenodo: release v1.3 → DOI → README + `CITATION.cff` me `XXXXXXX` badlo.
 5. Light-theme screenshots final karo (paper Figures 2-5, 7).
 6. Laptop par: `python main.py evaluate` (boto3 + moto) ek baar; Chainsaw/Hayabusa `--limit 3` se; Figure 6 ka caption dekhna.
+
+## 8. Merge ke baad (main par)
+
+- **GitHub CI atka hua tha** (dono Python versions par "Run all tests" 25 min+). PR run cancel karke log padha: `LinuxCollector::test_package_is_complete_and_hashed` par atka tha.
+  **Wajah:** collector `/tmp` ki har file `open()` karke padhta tha. GitHub runner ke `/tmp` me .NET ke named pipes (FIFO) hote hain, aur FIFO kholte hi read hamesha ke liye ruk jata hai.
+  Ye asli bug tha: kisi bhi Linux machine par jahan `/tmp` me FIFO ho, collector atak jata.
+  **Fix:** `collectors/cpdfir-collect-linux.py` aur `hostcollect.py` ab sirf regular files padhte hain (FIFO, socket, device skip). Iske liye regression test bhi joda.
+  Sandbox me `/tmp` me FIFO rakh ke check kiya: purana code atka (timeout), naya code 105/105 pass.
+- Tests ab **105** hain (104 + 1 naya regression test).
+- Live site (Render, commit `c952c04`) browser se check ki: v1.3, 62 rules, Python 3.13.0, `S1_pure` 244/38, demo 268/51, Merkle verified true, storage PostgreSQL (last_error null). Purana demo apne aap re-analyse ho gaya, to `Mirror.hold()` asli DB par bina error ke chala.

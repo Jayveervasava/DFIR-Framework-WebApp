@@ -208,6 +208,31 @@ class LinuxCollector(unittest.TestCase):
         finally:
             shutil.rmtree(out, ignore_errors=True)
 
+    @unittest.skipUnless(hasattr(os, "mkfifo"), "needs named pipes")
+    def test_named_pipe_does_not_block_the_collectors(self):
+        """A FIFO in /tmp (e.g. .NET debug pipes on CI runners) must be skipped: opening it for reading blocks forever."""
+        import importlib.util
+        import threading
+        import hostcollect
+        spec = importlib.util.spec_from_file_location("col", os.path.join(ROOT, "collectors", "cpdfir-collect-linux.py"))
+        col = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(col)
+        d = tempfile.mkdtemp()
+        try:
+            fifo = os.path.join(d, "pipe-in")
+            os.mkfifo(fifo)
+            res = {}
+
+            def probe():
+                res["v"] = (col.magic(fifo), col.sha256(fifo), hostcollect._magic(fifo), hostcollect.sha256_file(fifo))
+            t = threading.Thread(target=probe, daemon=True)
+            t.start()
+            t.join(5)
+            self.assertFalse(t.is_alive(), "reading a named pipe blocked")
+            self.assertEqual(res["v"], (None, None, None, None))
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -23,6 +23,7 @@ import os
 import platform
 import re
 import socket
+import stat
 import subprocess
 import sys
 import time
@@ -38,6 +39,8 @@ def _iso(ts):
 
 def sha256_file(path, cap=HASH_MAX_BYTES):
     try:
+        if not os.path.isfile(path):          # FIFOs, sockets, devices: open() can block forever (e.g. pipes in /tmp)
+            return None
         if os.path.getsize(path) > cap:
             return None
         h = hashlib.sha256()
@@ -61,6 +64,8 @@ def default_runner(cmd, timeout=90):
 
 def _magic(path):
     try:
+        if not os.path.isfile(path):          # FIFOs, sockets, devices: open() can block forever (e.g. pipes in /tmp)
+            return None
         with open(path, "rb") as f:
             b = f.read(4)
     except OSError:
@@ -461,6 +466,8 @@ class HostCollector:
                                     continue
                                 st = en.stat(follow_symlinks=False)
                             except OSError:
+                                continue
+                            if not stat.S_ISREG(st.st_mode):            # skip FIFOs / sockets / devices: reading them can block
                                 continue
                             newest = max(st.st_mtime, st.st_ctime)      # ctime moves when timestamps are forged (Linux) / is creation time (Windows)
                             if newest < cutoff:

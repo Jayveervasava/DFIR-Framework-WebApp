@@ -230,7 +230,7 @@ Command line: `python main.py triage | collect-host | demo | evaluate | real-eva
 | Reporting | `report.py` | Self-contained HTML report (no internet or JavaScript needed) |
 | Evaluation | `evaluate.py`, `generate_data.py` | Simulated scenarios with ground truth, tampering tests, scalability |
 | Real-data validation | `realdata.py` | Tests on **real** public logs (section 4) |
-| Tests | `tests/` | 104 tests: real processes and sockets (Linux), AWS collectors (botocore Stubber validated against the AWS service model), SSH collector (fake runner), parsers, rules, custody, hosted-console privacy, collector package integrity, pseudonymisation, held-out labels, Merkle trees and proofs (including tampered and malformed proofs) |
+| Tests | `tests/` | 105 tests: real processes and sockets (Linux), AWS collectors (botocore Stubber validated against the AWS service model), SSH collector (fake runner), parsers, rules, custody, hosted-console privacy, collector package integrity, pseudonymisation, held-out labels, Merkle trees and proofs (including tampered and malformed proofs) |
 
 **Supported inputs**
 

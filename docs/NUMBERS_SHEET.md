@@ -15,8 +15,8 @@ Har number neeche likhi file ya run se hai, koi bhi haath se nahi likha. Wording
 | Merkle tree (S1) | 38 leaves, ledger entry #7 (stage `Merkle`), algorithm `sha256-merkle-v1` | E2E run |
 | Scalability | 104,634 records in **7.713 s**; throughput 16,772 → 13,565 records/s (README me rounded: 16,800 → 13,600); F1 1.000 at every size | `results/scalability.csv` (purana laptop run, Python 3.13.16) |
 | Cloud emulated | 14/14 (single region), 15/15 (all regions), 0 FP | `results/evaluation.json` → `cloud_emulated` |
-| Tests (CP-DFIR) | **104** (62 + 25 Merkle + 17 web). boto3/moto ke saath: 104/104 pass | `pytest tests` on merged branch |
-| Showcase test count (Claude 7) | 104 + 55 + 41 = **200** | Brief ka formula |
+| Tests (CP-DFIR) | **105** (62 + 25 Merkle + 17 web + 1 collector named-pipe regression). boto3/moto ke saath: 105/105 pass | `pytest tests` on `main` |
+| Showcase test count (Claude 7) | 105 + 55 + 41 = **201** | Brief ka formula |
 
 ## Dhyan
 - `evaluation.json` do runs ka merge hai (tamper lists naye run se, baaki purane laptop run se). Laptop par `python main.py evaluate` ek baar chalao. Usse timings, 7.7 s aur 16,800 → 13,600 badal sakte hain; paper me wahi naye numbers daalna.

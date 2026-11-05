@@ -22,6 +22,7 @@ import pwd
 import re
 import shutil
 import socket
+import stat
 import subprocess
 import sys
 import tempfile
@@ -38,6 +39,8 @@ def iso(ts):
 
 def sha256(path, cap=200 * 1024 * 1024):
     try:
+        if not os.path.isfile(path):          # FIFOs, sockets, devices: open() can block forever (e.g. pipes in /tmp)
+            return None
         if os.path.getsize(path) > cap:
             return None
         h = hashlib.sha256()
@@ -59,6 +62,8 @@ def read(path, cap=2_000_000):
 
 def magic(path):
     try:
+        if not os.path.isfile(path):          # FIFOs, sockets, devices: open() can block forever (e.g. pipes in /tmp)
+            return None
         with open(path, "rb") as f:
             b = f.read(4)
     except OSError:
@@ -275,7 +280,7 @@ class Collector:
                         st = os.lstat(p)
                     except OSError:
                         continue
-                    if max(st.st_mtime, st.st_ctime) < cut:
+                    if not stat.S_ISREG(st.st_mode) or max(st.st_mtime, st.st_ctime) < cut:
                         continue
                     mg = magic(p)
                     found.append(dict(path=p, size=st.st_size, mtime=iso(st.st_mtime), changed=iso(st.st_ctime), magic=mg,
