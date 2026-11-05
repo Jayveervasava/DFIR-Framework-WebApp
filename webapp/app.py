@@ -1361,6 +1361,11 @@ def api_verify_proof():
             and st["fresh_leaf"][eid] == proof.get("leaf_hash")
         if ok and proof.get("case_id") not in (None, cid):
             out["valid"], out["reason"] = False, f"this proof was issued for case {proof.get('case_id')}, not {cid}"
+        # leaf_count is not hashed into the root, so a changed count can still walk the same path: bind it to the ledger
+        ledger_count = ((st["entry"] or {}).get("details") or {}).get("leaf_count")
+        if out["valid"] and proof.get("leaf_count") != ledger_count:
+            out["valid"], out["reason"] = False, (f"the proof's leaf_count ({proof.get('leaf_count')}) is not the one "
+                                                  f"recorded in the custody ledger ({ledger_count})")
         if st["problems"]:
             out["case_problems"] = st["problems"]
     return jsonify(out)

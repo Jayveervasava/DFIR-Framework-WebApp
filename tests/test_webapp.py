@@ -295,6 +295,17 @@ class MerkleRoutes(BackendBase):
         p = json.loads(json.dumps(proof))
         p["case_id"] = "CASE-1999-0001"
         self.assertFalse(check(p, case_id=cid)["valid"])
+        # leaf_count is not part of the root: find a changed count that the offline check still accepts,
+        # then the check against the case must reject it (the count is bound to the custody ledger)
+        for n in range(1, 9):
+            p = json.loads(json.dumps(proof))
+            p["leaf_count"] = proof["leaf_count"] + n
+            if check(p)["valid"]:
+                break
+        self.assertTrue(check(p)["valid"], "no same-shape leaf_count found")
+        v = check(p, case_id=cid)
+        self.assertFalse(v["valid"], v)
+        self.assertIn("leaf_count", v["reason"])
         v = check({"version": 1, "garbage": True}, case_id=cid)                                         # malformed: clean answer
         self.assertEqual((v["valid"], v["leaf_matches_finding"]), (False, False))
 
