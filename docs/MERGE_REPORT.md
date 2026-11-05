@@ -91,3 +91,5 @@ Screenshots: `CP-DFIR-screenshots.zip` (repo me nahi; chat me alag diya).
   Sandbox me `/tmp` me FIFO rakh ke check kiya: purana code atka (timeout), naya code 105/105 pass.
 - Tests ab **105** hain (104 + 1 naya regression test).
 - Live site (Render, commit `c952c04`) browser se check ki: v1.3, 62 rules, Python 3.13.0, `S1_pure` 244/38, demo 268/51, Merkle verified true, storage PostgreSQL (last_error null). Purana demo apne aap re-analyse ho gaya, to `Mirror.hold()` asli DB par bina error ke chala.
+- Hang fix ke baad GitHub par 3 real-process tests fail hue. Wajah: GitHub runner child process ka `/proc/<pid>/exe` padhne nahi deta. Ab aisi machine par ye tests reason ke saath skip hote hain.
+  **CI green** (Python 3.12 + 3.13): 101 passed, 4 skipped (ye 3 + real-socket test, jo pehle se skip hota tha). Sandbox me (root aur non-root dono) 105/105 pass.
