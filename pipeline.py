@@ -8,6 +8,7 @@ import time
 import collect
 import config
 import correlate
+import merkle
 import normalize
 from custody import CustodyLedger
 
@@ -60,6 +61,8 @@ def run_case(input_dir, case_dir, cfg=None, make_report=True, clean=True, key=No
     say(3, "Correlation", "done", f"{corr['alert_events']} flagged, {len(corr['incidents'])} incident(s), {timings['correlation']:.1f} s")
     say(4, "Custody", "start", "")
 
+    merkle_info = {}
+
     def _write_outputs():
         p_json = os.path.join(case_dir, "normalized_events.json")
         with open(p_json, "w", encoding="utf-8") as f:
@@ -78,13 +81,26 @@ def run_case(input_dir, case_dir, cfg=None, make_report=True, clean=True, key=No
         ledger.record("correlate", p_inc, stage="Correlation",
                       details={"incidents": len(corr["incidents"]), "alerts": corr["alert_events"]})
         ledger.record("export", p_csv, stage="Correlation", details={"rows": len(events)})
+        # per-finding Merkle tree: findings = events with at least one flag; the root goes into the signed ledger.
+        # A case with no findings still gets a tree file (leaf_count 0, root = SHA-256 of nothing), so "no findings" is bound too.
+        t_m = time.perf_counter()
+        tree = merkle.build_tree([e for e in events if e["flags"]])
+        p_mt = os.path.join(case_dir, "merkle_tree.json")
+        with open(p_mt, "w", encoding="utf-8") as f:
+            json.dump(tree, f)
+        m_entry = ledger.record("merkle", p_mt, stage="Merkle",
+                                details={"root": tree["root"], "leaf_count": tree["leaf_count"], "algorithm": tree["algorithm"]})
+        merkle_info.update(tree=tree, ledger_info=dict(case_id=os.path.basename(os.path.abspath(case_dir)), ledger_seq=m_entry["seq"],
+                                                       ledger_entry_hash=m_entry["entry_hash"]),
+                           seconds=time.perf_counter() - t_m)
 
     _timed(timings, "output_and_custody", _write_outputs)
     ok, checks = _timed(timings, "custody_verification", ledger.verify)
     say(4, "Custody", "done", "VERIFIED" if ok else "FAILED")
     head = ledger.entries[-1]["entry_hash"] if ledger.entries else None
     ctx = dict(cfg=cfg, acquired=acquired, acquire_msgs=msgs, stats=stats, events=events, corr=corr, custody_ok=ok,
-               custody_checks=checks, head_hash=head, timings=timings, case_dir=case_dir, ledger=ledger, hmac_used=bool(ledger.key))
+               custody_checks=checks, head_hash=head, timings=timings, case_dir=case_dir, ledger=ledger, hmac_used=bool(ledger.key),
+               merkle_tree=merkle_info.get("tree"), merkle_ledger_info=merkle_info.get("ledger_info"), merkle_seconds=merkle_info.get("seconds"))
     if make_report:
         import report
         p = os.path.join(case_dir, "report.html")

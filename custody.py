@@ -138,4 +138,39 @@ class CustodyLedger:
                 note = "hash matches ledger" if ok else f"hash changed ({e['sha256'][:12]}... -> {now[:12]}...)"
             files_ok &= ok
             checks.append({"type": "file", "item": rel, "ok": ok, "note": note})
-        return chain_ok and files_ok, checks
+        merkle_ok = True
+        for c in self._merkle_checks(entries, base):
+            merkle_ok &= c["ok"]
+            checks.append(c)
+        return chain_ok and files_ok and merkle_ok, checks
+
+    @staticmethod
+    def _merkle_checks(entries, base):
+        """Per-finding Merkle tree: the root in merkle_tree.json (recomputed from its leaves) must equal the root
+        that the latest 'merkle' ledger entry recorded. Cases written before the Merkle layer have no such entry
+        and get no check."""
+        entry = next((e for e in reversed(entries) if e.get("action") == "merkle"), None)
+        if entry is None:
+            return []
+        item = f"{entry.get('target_path')} root vs ledger entry {entry.get('seq')}"
+        p = os.path.join(base, entry.get("target_path", ""))
+        if not os.path.exists(p):
+            return [{"type": "merkle", "item": item, "ok": False, "note": "merkle tree file missing"}]
+        try:
+            import merkle
+            with open(p, encoding="utf-8") as f:
+                tree = json.load(f)
+            leaves = [l["leaf_hash"] for l in tree["leaves"]]
+            recomputed = merkle._root_of(leaves)
+        except Exception as exc:
+            return [{"type": "merkle", "item": item, "ok": False, "note": f"merkle tree file unreadable ({type(exc).__name__})"}]
+        d = entry.get("details", {})
+        problems = []
+        if tree.get("root") != d.get("root"):
+            problems.append("tree root differs from the root in the ledger entry")
+        if recomputed != d.get("root"):
+            problems.append("root recomputed from the tree leaves differs from the ledger root")
+        if tree.get("leaf_count") != d.get("leaf_count") or len(leaves) != d.get("leaf_count"):
+            problems.append("leaf count differs from the ledger entry")
+        return [{"type": "merkle", "item": item, "ok": not problems,
+                 "note": "; ".join(problems) or f"root matches ledger ({d.get('leaf_count')} findings)"}]
