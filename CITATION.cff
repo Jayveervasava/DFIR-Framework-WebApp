@@ -10,5 +10,22 @@ authors:
     affiliation: "Parul University"
 repository-code: "https://github.com/jayveerv/DFIR-Framework-WebApp"
 url: "https://cp-dfir-console.onrender.com/"
+abstract: >-
+  CP-DFIR collects evidence from Windows, Linux and AWS, converts it to one
+  common schema, and correlates events from the different platforms into a
+  single attack timeline mapped to MITRE ATT&CK. Every step is recorded in a
+  tamper-evident, HMAC-signed chain-of-custody ledger, and every finding can be
+  exported as a Merkle per-finding proof that is checked against the ledger
+  root. It runs as a browser-based analyst console and from the command line.
+keywords:
+  - digital forensics
+  - incident response
+  - DFIR
+  - cross-platform correlation
+  - cloud forensics
+  - AWS CloudTrail
+  - MITRE ATT&CK
+  - chain of custody
+  - Merkle tree
 # doi: 10.5281/zenodo.XXXXXXX   # add after the Zenodo release
 date-released: "2026-11-05"
