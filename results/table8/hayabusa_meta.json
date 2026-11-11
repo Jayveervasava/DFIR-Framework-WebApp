@@ -1,0 +1,11 @@
+{
+ "tool": "Hayabusa",
+ "version": "Hayabusa v3.6.0 - Nezamezuki Release",
+ "rules_commit": "58f8f145c65ed0bc0dcf888efde4ca9ca87ba846",
+ "min_level": "low",
+ "command_template": "<tools>/hayabusa/hayabusa-3.6.0-lin-x64-gnu csv-timeline -f <sample.evtx> -o <out.csv> -p verbose -w -q -C",
+ "samples": 117,
+ "errors": 0,
+ "run_at": "2026-11-11T21:12:27.064445+00:00",
+ "platform": "Linux-6.18.44-fc-v378-x86_64-with-glibc2.39"
+}

@@ -1,0 +1,231 @@
+{
+ "source": "NextronSystems/evtx-baseline release assets win10-client, win11-client, win2022-evtx, win7-x86 (repo commit 394bd48); Security, System, PowerShell and Defender channels",
+ "asserted_benign": true,
+ "n_sources": 4,
+ "is_rate": true,
+ "rules_fingerprint": "5d6349a632422bd3",
+ "files": 20,
+ "files_unreadable": 0,
+ "records": 35816,
+ "supported_events": 3221,
+ "events_with_alert": 51,
+ "alerts": 51,
+ "event_level_fp_pct": 1.5834,
+ "event_level_ci95_pct": [
+  1.206,
+  2.076
+ ],
+ "files_with_alert": 10,
+ "file_level_fp_pct": 50.0,
+ "file_level_ci95_pct": [
+  29.929,
+  70.071
+ ],
+ "alerts_per_1000_events": 15.83,
+ "by_rule": {
+  "service_installed": 16,
+  "defender_tampering": 15,
+  "password_reset_by_other": 10,
+  "account_security_weakened": 6,
+  "privilege_group_add": 3,
+  "log_cleared": 1
+ },
+ "per_file": [
+  {
+   "file": "evtx-baseline/win10-client/Microsoft-Windows-PowerShell%4Operational.evtx",
+   "error": null,
+   "records": 121,
+   "supported": 103,
+   "alerted_events": 0,
+   "flags": {}
+  },
+  {
+   "file": "evtx-baseline/win10-client/Microsoft-Windows-Windows Defender%4Operational.evtx",
+   "error": null,
+   "records": 142,
+   "supported": 48,
+   "alerted_events": 4,
+   "flags": {
+    "defender_tampering": 4
+   }
+  },
+  {
+   "file": "evtx-baseline/win10-client/Security.evtx",
+   "error": null,
+   "records": 3397,
+   "supported": 696,
+   "alerted_events": 8,
+   "flags": {
+    "password_reset_by_other": 4,
+    "account_security_weakened": 2,
+    "privilege_group_add": 2
+   }
+  },
+  {
+   "file": "evtx-baseline/win10-client/System.evtx",
+   "error": null,
+   "records": 919,
+   "supported": 34,
+   "alerted_events": 5,
+   "flags": {
+    "service_installed": 3,
+    "defender_tampering": 1,
+    "log_cleared": 1
+   }
+  },
+  {
+   "file": "evtx-baseline/win10-client/Windows PowerShell.evtx",
+   "error": null,
+   "records": 47,
+   "supported": 0,
+   "alerted_events": 0,
+   "flags": {}
+  },
+  {
+   "file": "evtx-baseline/win11-client/Microsoft-Windows-PowerShell%4Operational.evtx",
+   "error": null,
+   "records": 234,
+   "supported": 20,
+   "alerted_events": 0,
+   "flags": {}
+  },
+  {
+   "file": "evtx-baseline/win11-client/Microsoft-Windows-Windows Defender%4Operational.evtx",
+   "error": null,
+   "records": 56,
+   "supported": 37,
+   "alerted_events": 3,
+   "flags": {
+    "defender_tampering": 3
+   }
+  },
+  {
+   "file": "evtx-baseline/win11-client/Security.evtx",
+   "error": null,
+   "records": 4677,
+   "supported": 542,
+   "alerted_events": 6,
+   "flags": {
+    "password_reset_by_other": 4,
+    "account_security_weakened": 2
+   }
+  },
+  {
+   "file": "evtx-baseline/win11-client/System.evtx",
+   "error": null,
+   "records": 571,
+   "supported": 32,
+   "alerted_events": 4,
+   "flags": {
+    "service_installed": 3,
+    "defender_tampering": 1
+   }
+  },
+  {
+   "file": "evtx-baseline/win11-client/Windows PowerShell.evtx",
+   "error": null,
+   "records": 64,
+   "supported": 0,
+   "alerted_events": 0,
+   "flags": {}
+  },
+  {
+   "file": "evtx-baseline/win2022-evtx/Microsoft-Windows-PowerShell%4Operational.evtx",
+   "error": null,
+   "records": 42,
+   "supported": 5,
+   "alerted_events": 0,
+   "flags": {}
+  },
+  {
+   "file": "evtx-baseline/win2022-evtx/Microsoft-Windows-Windows Defender%4Operational.evtx",
+   "error": null,
+   "records": 104,
+   "supported": 73,
+   "alerted_events": 4,
+   "flags": {
+    "defender_tampering": 4
+   }
+  },
+  {
+   "file": "evtx-baseline/win2022-evtx/Security.evtx",
+   "error": null,
+   "records": 22085,
+   "supported": 1371,
+   "alerted_events": 0,
+   "flags": {}
+  },
+  {
+   "file": "evtx-baseline/win2022-evtx/System.evtx",
+   "error": null,
+   "records": 1663,
+   "supported": 18,
+   "alerted_events": 3,
+   "flags": {
+    "service_installed": 2,
+    "defender_tampering": 1
+   }
+  },
+  {
+   "file": "evtx-baseline/win2022-evtx/Windows PowerShell.evtx",
+   "error": null,
+   "records": 54,
+   "supported": 0,
+   "alerted_events": 0,
+   "flags": {}
+  },
+  {
+   "file": "evtx-baseline/win7-x86/Microsoft-Windows-PowerShell%4Operational.evtx",
+   "error": null,
+   "records": 0,
+   "supported": 0,
+   "alerted_events": 0,
+   "flags": {}
+  },
+  {
+   "file": "evtx-baseline/win7-x86/Microsoft-Windows-Windows Defender%4Operational.evtx",
+   "error": null,
+   "records": 0,
+   "supported": 0,
+   "alerted_events": 0,
+   "flags": {}
+  },
+  {
+   "file": "evtx-baseline/win7-x86/Security.evtx",
+   "error": null,
+   "records": 375,
+   "supported": 218,
+   "alerted_events": 5,
+   "flags": {
+    "privilege_group_add": 1,
+    "account_security_weakened": 2,
+    "password_reset_by_other": 2
+   }
+  },
+  {
+   "file": "evtx-baseline/win7-x86/System.evtx",
+   "error": null,
+   "records": 1186,
+   "supported": 24,
+   "alerted_events": 9,
+   "flags": {
+    "service_installed": 8,
+    "defender_tampering": 1
+   }
+  },
+  {
+   "file": "evtx-baseline/win7-x86/Windows PowerShell.evtx",
+   "error": null,
+   "records": 79,
+   "supported": 0,
+   "alerted_events": 0,
+   "flags": {}
+  }
+ ],
+ "caveats": [
+  "Event-level interval treats events as independent; events on one host are correlated, so it is too narrow.",
+  "Result is valid only for the data set used (OS, roles, volume); it is not a general false-positive rate.",
+  "Clean-install baselines contain little user/admin activity; enterprise noise is likely higher."
+ ],
+ "seconds": 106.1
+}

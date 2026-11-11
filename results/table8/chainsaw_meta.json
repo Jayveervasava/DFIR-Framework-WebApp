@@ -1,0 +1,13 @@
+{
+ "tool": "Chainsaw",
+ "version": "chainsaw 2.12.0",
+ "sigma_commit": "d7c9da10c170a6988d68ebdf2c9f7bd8782b7c55",
+ "mapping": "<tools>/chainsaw/mappings/sigma-event-logs-all.yml",
+ "chainsaw_rules": null,
+ "min_level": "low",
+ "command_template": "<tools>/chainsaw/chainsaw hunt <sample.evtx> -s <tools>/sigma --mapping <tools>/chainsaw/mappings/sigma-event-logs-all.yml --json -o <out.json> --skip-errors -q",
+ "samples": 117,
+ "errors": 0,
+ "run_at": "2026-11-11T21:15:23.658176+00:00",
+ "platform": "Linux-6.18.44-fc-v378-x86_64-with-glibc2.39"
+}

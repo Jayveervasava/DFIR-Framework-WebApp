@@ -1,4 +1,4 @@
 ﻿tool,version_rules,in_scope_samples,alert,alert_any_level,correct_technique_parent_level,correct_technique_exact,errored,status
 CP-DFIR (frozen v1.1),rules fingerprint 804638ca9a700716,117,36,36,26,24,0,measured (results/heldout_frozen_v1.1.json)
-Chainsaw,-,117,,,,,,"UNTESTED, run on laptop"
-Hayabusa,-,117,,,,,,"UNTESTED, run on laptop"
+Chainsaw,chainsaw 2.12.0; rules d7c9da10c1; alert = level >= low,117,53,54,43,40,0,measured
+Hayabusa,Hayabusa v3.6.0 - Nezamezuki Release; rules 58f8f145c6; alert = level >= low,117,76,87,48,44,0,measured

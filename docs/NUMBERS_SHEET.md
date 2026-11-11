@@ -21,5 +21,6 @@ Har number neeche likhi file ya run se hai, koi bhi haath se nahi likha. Wording
 
 ## Dhyan
 - `evaluation.json` do runs ka merge hai (tamper lists naye run se, baaki purane laptop run se). Laptop par `python main.py evaluate` ek baar chalao. Usse timings, 7.7 s aur 16,800 → 13,600 badal sakte hain; paper me wahi naye numbers daalna.
-- Table 8 me Chainsaw/Hayabusa ke numbers abhi **nahi** hain (UNTESTED). Benign FP rate **not measured**.
+- Table 8 (12 Nov 2026, same 117 samples): CP-DFIR frozen 36 (30.8%) alert / 26 (22.2%) correct; Chainsaw 2.12.0 + Sigma 53 (45.3%) / 43 (36.8%); Hayabusa 3.6.0 76 (65.0%) / 48 (41.0%); any of the three correct 60/117; CP-DFIR-only correct 6. `results/table8.md`
+- Benign false alarms (evtx-baseline, 4 clean hosts, current rules 5d6349a6): 51 of 3,221 supported events (1.6%, 95% CI 1.2-2.1%), 10/20 files. `results/benign_fp_evtx_baseline.json`
 - `heldout_results.json` (v1.3 post-hoc, 68/117) paper ke main result me use mat karna; frozen v1.1 (36/117) hi asli held-out hai.

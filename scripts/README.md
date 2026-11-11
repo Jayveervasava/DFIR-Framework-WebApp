@@ -1,9 +1,10 @@
 # scripts/ - Table 8 (Chainsaw / Hayabusa) and benign false-alarm measurement
 
-Status: **nothing in this folder that calls an external tool has been run.** The sandbox these scripts were written in had no
-internet, no Chainsaw, no Hayabusa and no EVTX files. The parsers were checked only on made-up fixtures
-(`python scripts/table8.py --selftest`). Treat every command below as **UNTESTED, run on laptop** until you have run it once.
-Try `--limit 3` first, then the full run. `--dry-run` only prints the commands.
+Status (12 Nov 2026): **both runs done on Linux x86-64.** Hayabusa 3.6.0 (rules 58f8f14) and Chainsaw 2.12.0 with Sigma
+(commit d7c9da1, mapping `sigma-event-logs-all.yml`) were run on all 117 in-scope held-out samples with 0 errors; results in
+`results/table8.md`, `results/table8.csv` and `results/table8/`. One fix was needed: Hayabusa 3.x writes an empty CSV when it
+finds nothing, which `parse_hayabusa_csv` now reads as "no detections". The benign false-alarm test was run on four clean hosts of
+NextronSystems/evtx-baseline (Security, System, PowerShell and Defender logs): `results/benign_fp_evtx_baseline.json`.
 
 ## Table 8: same 117 samples for every tool
 

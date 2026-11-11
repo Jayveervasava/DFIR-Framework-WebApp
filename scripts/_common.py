@@ -99,6 +99,8 @@ def parse_hayabusa_csv(path):
     """Hayabusa csv-timeline output with `-p verbose`: columns Level, RuleTitle, MitreTags (e.g. 'T1059.001 ¦ T1027').
     ASSUMED FORMAT - not checked against a real Hayabusa run."""
     out = []
+    if os.path.getsize(path) == 0:          # Hayabusa 3.x writes an empty file when nothing is detected
+        return out
     with open(path, encoding="utf-8-sig", newline="") as f:
         rd = csv.DictReader(f)
         need = {"Level", "RuleTitle", "MitreTags"}
